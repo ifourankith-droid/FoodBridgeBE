@@ -1,0 +1,62 @@
+using FluentMigrator;
+
+namespace FoodBridge.Migrations.Migrations;
+
+/// <summary>
+/// Demo data around Ahmedabad, Gujarat. Only applied when the runner is invoked with the
+/// "Development" profile (see RunnerOptions.Profile wiring in Program.cs).
+/// </summary>
+[Migration(202607221010)]
+[Profile("Development")]
+public sealed class M202607221010_SeedDevelopmentData : Migration
+{
+    public override void Up()
+    {
+        // [Profile] migrations run through the normal versioned sequence AND get re-invoked
+        // unconditionally by ApplyProfiles() on every MigrateUp() call, so this guard is required
+        // for idempotency, not just defensive.
+        Execute.Sql(@"
+IF EXISTS (SELECT 1 FROM Users WHERE Id = '11111111-1111-1111-1111-111111111101')
+    RETURN;
+
+INSERT INTO Users (Id, Mobile, Name, Role, City, Address, Latitude, Longitude, Location, CapacityMeals, IsAvailable, AccountStatus, IsDeleted, CreatedAtUtc, UpdatedAtUtc)
+VALUES
+('11111111-1111-1111-1111-111111111101', '9999900000', 'FoodBridge Admin', 4, 'Ahmedabad', 'FoodBridge HQ, Navrangpura', 23.036600, 72.560700, geography::Point(23.036600, 72.560700, 4326), NULL, 1, 2, 0, GETUTCDATE(), GETUTCDATE()),
+('11111111-1111-1111-1111-111111111102', '9999900001', 'Green Leaf Restaurant', 1, 'Ahmedabad', 'C.G. Road, Navrangpura', 23.033800, 72.562300, geography::Point(23.033800, 72.562300, 4326), NULL, 1, 2, 0, GETUTCDATE(), GETUTCDATE()),
+('11111111-1111-1111-1111-111111111103', '9999900002', 'Sunrise Caterers', 1, 'Ahmedabad', 'S.G. Highway, Bodakdev', 23.028200, 72.506100, geography::Point(23.028200, 72.506100, 4326), NULL, 1, 2, 0, GETUTCDATE(), GETUTCDATE()),
+('11111111-1111-1111-1111-111111111104', '9999900003', 'Raj Patel', 2, 'Ahmedabad', 'Satellite', 23.020900, 72.529600, geography::Point(23.020900, 72.529600, 4326), NULL, 1, 2, 0, GETUTCDATE(), GETUTCDATE()),
+('11111111-1111-1111-1111-111111111105', '9999900004', 'Priya Shah', 2, 'Ahmedabad', 'Vastrapur', 23.038800, 72.529200, geography::Point(23.038800, 72.529200, 4326), NULL, 1, 2, 0, GETUTCDATE(), GETUTCDATE()),
+('11111111-1111-1111-1111-111111111106', '9999900005', 'Aman Verma', 2, 'Ahmedabad', 'Maninagar', 22.996500, 72.603200, geography::Point(22.996500, 72.603200, 4326), NULL, 1, 2, 0, GETUTCDATE(), GETUTCDATE()),
+('11111111-1111-1111-1111-111111111107', '9999900006', 'Hope NGO', 3, 'Ahmedabad', 'Paldi', 23.008900, 72.560100, geography::Point(23.008900, 72.560100, 4326), 200, 1, 2, 0, GETUTCDATE(), GETUTCDATE()),
+('11111111-1111-1111-1111-111111111108', '9999900007', 'Asha Foundation', 3, 'Ahmedabad', 'Chandkheda', 23.107100, 72.583200, geography::Point(23.107100, 72.583200, 4326), 150, 1, 2, 0, GETUTCDATE(), GETUTCDATE());
+
+INSERT INTO Listings (Id, DonorId, Title, FoodType, QuantityMeals, FreshnessTag, PreparedAtUtc, PickupDeadlineUtc, PickupAddress, Latitude, Longitude, Location, Status, VolunteerId, RecipientId, IsDeleted, CreatedAtUtc, UpdatedAtUtc)
+VALUES
+('22222222-2222-2222-2222-222222222201', '11111111-1111-1111-1111-111111111102', 'Surplus Wedding Catering', 'Mixed Veg Meals', 80, 1, DATEADD(HOUR, -1, GETUTCDATE()), DATEADD(HOUR, 6, GETUTCDATE()), 'C.G. Road, Navrangpura', 23.033800, 72.562300, geography::Point(23.033800, 72.562300, 4326), 1, NULL, NULL, 0, GETUTCDATE(), GETUTCDATE()),
+('22222222-2222-2222-2222-222222222202', '11111111-1111-1111-1111-111111111103', 'Extra Lunch Boxes', 'Packaged Meals', 25, 3, DATEADD(HOUR, -2, GETUTCDATE()), DATEADD(HOUR, 3, GETUTCDATE()), 'S.G. Highway, Bodakdev', 23.028200, 72.506100, geography::Point(23.028200, 72.506100, 4326), 1, NULL, NULL, 0, GETUTCDATE(), GETUTCDATE()),
+('22222222-2222-2222-2222-222222222203', '11111111-1111-1111-1111-111111111102', 'Event Snack Surplus', 'Snacks', 40, 2, DATEADD(HOUR, -3, GETUTCDATE()), DATEADD(HOUR, 4, GETUTCDATE()), 'C.G. Road, Navrangpura', 23.033800, 72.562300, geography::Point(23.033800, 72.562300, 4326), 2, '11111111-1111-1111-1111-111111111104', NULL, 0, GETUTCDATE(), GETUTCDATE()),
+('22222222-2222-2222-2222-222222222204', '11111111-1111-1111-1111-111111111103', 'Corporate Cafeteria Surplus', 'Mixed Veg Meals', 60, 1, DATEADD(HOUR, -1, GETUTCDATE()), DATEADD(HOUR, 2, GETUTCDATE()), 'S.G. Highway, Bodakdev', 23.028200, 72.506100, geography::Point(23.028200, 72.506100, 4326), 2, '11111111-1111-1111-1111-111111111105', NULL, 0, GETUTCDATE(), GETUTCDATE()),
+('22222222-2222-2222-2222-222222222205', '11111111-1111-1111-1111-111111111102', 'Restaurant Buffet Leftovers', 'Mixed Veg Meals', 35, 2, DATEADD(HOUR, -2, GETUTCDATE()), DATEADD(HOUR, 1, GETUTCDATE()), 'C.G. Road, Navrangpura', 23.033800, 72.562300, geography::Point(23.033800, 72.562300, 4326), 3, '11111111-1111-1111-1111-111111111106', '11111111-1111-1111-1111-111111111107', 0, GETUTCDATE(), GETUTCDATE()),
+('22222222-2222-2222-2222-222222222206', '11111111-1111-1111-1111-111111111103', 'Bulk Tiffin Surplus', 'Packaged Meals', 45, 3, DATEADD(HOUR, -6, GETUTCDATE()), DATEADD(HOUR, -1, GETUTCDATE()), 'S.G. Highway, Bodakdev', 23.028200, 72.506100, geography::Point(23.028200, 72.506100, 4326), 4, '11111111-1111-1111-1111-111111111104', '11111111-1111-1111-1111-111111111108', 0, GETUTCDATE(), GETUTCDATE()),
+('22222222-2222-2222-2222-222222222207', '11111111-1111-1111-1111-111111111102', 'Festival Prasad Surplus', 'Mixed Veg Meals', 100, 1, DATEADD(HOUR, -8, GETUTCDATE()), DATEADD(HOUR, -3, GETUTCDATE()), 'C.G. Road, Navrangpura', 23.033800, 72.562300, geography::Point(23.033800, 72.562300, 4326), 5, '11111111-1111-1111-1111-111111111105', '11111111-1111-1111-1111-111111111107', 0, GETUTCDATE(), GETUTCDATE()),
+('22222222-2222-2222-2222-222222222208', '11111111-1111-1111-1111-111111111103', 'Unclaimed Canteen Surplus', 'Packaged Meals', 20, 3, DATEADD(HOUR, -10, GETUTCDATE()), DATEADD(HOUR, -2, GETUTCDATE()), 'S.G. Highway, Bodakdev', 23.028200, 72.506100, geography::Point(23.028200, 72.506100, 4326), 6, NULL, NULL, 0, GETUTCDATE(), GETUTCDATE());
+");
+    }
+
+    public override void Down()
+    {
+        Execute.Sql(@"
+DELETE FROM Listings WHERE Id IN (
+    '22222222-2222-2222-2222-222222222201', '22222222-2222-2222-2222-222222222202',
+    '22222222-2222-2222-2222-222222222203', '22222222-2222-2222-2222-222222222204',
+    '22222222-2222-2222-2222-222222222205', '22222222-2222-2222-2222-222222222206',
+    '22222222-2222-2222-2222-222222222207', '22222222-2222-2222-2222-222222222208');
+
+DELETE FROM Users WHERE Id IN (
+    '11111111-1111-1111-1111-111111111101', '11111111-1111-1111-1111-111111111102',
+    '11111111-1111-1111-1111-111111111103', '11111111-1111-1111-1111-111111111104',
+    '11111111-1111-1111-1111-111111111105', '11111111-1111-1111-1111-111111111106',
+    '11111111-1111-1111-1111-111111111107', '11111111-1111-1111-1111-111111111108');
+");
+    }
+}

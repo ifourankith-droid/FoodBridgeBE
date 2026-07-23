@@ -1,0 +1,4238 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FoodBridge — Rescue Food, Restore Hope</title>
+
+    <!-- Bootstrap 5 -->
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/5.3.2/css/bootstrap.min.css"
+    />
+    <!-- Font Awesome -->
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"
+    />
+    <!-- Google Font: Poppins -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+
+    <style>
+      :root {
+        --primary-deep: #b65c3f;
+        --primary: rgb(216, 119, 87);
+        --primary-bright: #e2906c;
+        --primary-soft: #fdf0e7;
+        --success-deep: #146c43;
+        --success: #1e9e5c;
+        --success-soft: #e7f7ee;
+        --orange: #ff7a3d;
+        --orange-soft: #ffeee3;
+        --cream: #faf8f6;
+        --ink: #241e1a;
+        --muted: #7a6f65;
+        --line: #e8e1d8;
+        --radius: 20px;
+        --shadow: 0 10px 30px rgba(20, 60, 35, 0.08);
+        --shadow-lg: 0 20px 50px rgba(20, 60, 35, 0.14);
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        font-family: "Poppins", sans-serif;
+        background: var(--cream);
+        color: var(--ink);
+        margin: 0;
+        overflow-x: hidden;
+      }
+      h1,
+      h2,
+      h3,
+      h4,
+      h5,
+      .fw-display {
+        font-weight: 700;
+        letter-spacing: -0.02em;
+      }
+      .text-muted-2 {
+        color: var(--muted) !important;
+      }
+      .small-label {
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+
+      /* ---------- Screen system ---------- */
+      .screen {
+        display: none;
+        min-height: 100vh;
+        animation: fadeIn 0.45s ease;
+      }
+      .screen.active {
+        display: block;
+      }
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+          transform: translateY(8px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      /* ---------- Buttons ---------- */
+      .btn-fb {
+        background: linear-gradient(
+          135deg,
+          var(--primary),
+          var(--primary-deep)
+        );
+        color: #fff;
+        border: none;
+        border-radius: 14px;
+        font-weight: 600;
+        padding: 12px 24px;
+        box-shadow: 0 8px 20px rgba(182, 92, 63, 0.25);
+        transition:
+          transform 0.15s ease,
+          box-shadow 0.15s ease;
+      }
+      .btn-fb:hover {
+        color: #fff;
+        transform: translateY(-2px);
+        box-shadow: 0 12px 26px rgba(182, 92, 63, 0.32);
+      }
+      .btn-fb-outline {
+        background: #fff;
+        color: var(--primary-deep);
+        border: 1.5px solid var(--primary);
+        border-radius: 14px;
+        font-weight: 600;
+        padding: 11px 22px;
+        transition: all 0.15s ease;
+      }
+      .btn-fb-outline:hover {
+        background: var(--primary-soft);
+        color: var(--primary-deep);
+      }
+      .btn-orange {
+        background: linear-gradient(135deg, var(--orange), #e8621f);
+        color: #fff;
+        border: none;
+        border-radius: 14px;
+        font-weight: 600;
+        padding: 11px 22px;
+        box-shadow: 0 8px 18px rgba(255, 122, 61, 0.3);
+        transition: transform 0.15s ease;
+      }
+      .btn-orange:hover {
+        color: #fff;
+        transform: translateY(-2px);
+      }
+      .btn-ghost {
+        background: transparent;
+        border: none;
+        color: var(--muted);
+        font-weight: 500;
+      }
+      .btn-icon {
+        width: 42px;
+        height: 42px;
+        border-radius: 50%;
+        border: 1px solid var(--line);
+        background: #fff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--ink);
+        position: relative;
+        transition: all 0.15s ease;
+      }
+      .btn-icon:hover {
+        background: var(--primary-soft);
+        border-color: var(--primary);
+      }
+
+      /* ---------- Availability toggle (topbar) ---------- */
+      .active-toggle {
+        display: none;
+        align-items: center;
+        gap: 8px;
+        height: 42px;
+        padding: 0 14px;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        background: #fff;
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--muted);
+        cursor: pointer;
+        transition: all 0.15s ease;
+      }
+      body.dark .active-toggle {
+        background: #241e19;
+      }
+      .active-toggle .active-dot {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: var(--muted);
+        transition: all 0.2s ease;
+      }
+      .active-toggle.is-on {
+        border-color: var(--success);
+        color: var(--success-deep);
+        background: var(--success-soft);
+      }
+      .active-toggle.is-on .active-dot {
+        background: var(--success);
+        box-shadow: 0 0 0 4px rgba(30, 158, 92, 0.18);
+        animation: pulse 1.6s infinite;
+      }
+
+      /* ---------- Glass cards ---------- */
+      .glass {
+        background: rgba(255, 255, 255, 0.72);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        border: 1px solid rgba(255, 255, 255, 0.6);
+        border-radius: var(--radius);
+        box-shadow: var(--shadow);
+      }
+      .card-fb {
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        box-shadow: var(--shadow);
+        transition:
+          transform 0.18s ease,
+          box-shadow 0.18s ease;
+      }
+      .card-fb.hoverable:hover {
+        transform: translateY(-4px);
+        box-shadow: var(--shadow-lg);
+      }
+
+      /* ---------- Auth screens ---------- */
+      .auth-wrap {
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+        background:
+          radial-gradient(
+            circle at 15% 20%,
+            rgba(226, 144, 108, 0.18),
+            transparent 40%
+          ),
+          radial-gradient(
+            circle at 85% 80%,
+            rgba(255, 122, 61, 0.16),
+            transparent 40%
+          ),
+          var(--cream);
+        padding: 20px;
+      }
+      .auth-card {
+        width: 100%;
+        max-width: 420px;
+        padding: 44px 36px;
+      }
+      .brand-logo {
+        width: 64px;
+        height: 64px;
+        border-radius: 20px;
+        background: linear-gradient(
+          135deg,
+          var(--primary-bright),
+          var(--primary-deep)
+        );
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #fff;
+        font-size: 28px;
+        margin: 0 auto 18px;
+        box-shadow: 0 10px 24px rgba(216, 119, 87, 0.3);
+      }
+      .otp-input {
+        width: 52px;
+        height: 60px;
+        text-align: center;
+        font-size: 24px;
+        font-weight: 700;
+        border-radius: 14px;
+        border: 1.5px solid var(--line);
+        margin: 0 5px;
+      }
+      .otp-input:focus {
+        border-color: var(--primary);
+        box-shadow: 0 0 0 3px var(--primary-soft);
+        outline: none;
+      }
+
+      /* ---------- Splash ---------- */
+      #screen-splash {
+        background: linear-gradient(
+          160deg,
+          var(--primary-deep) 0%,
+          var(--primary) 55%,
+          var(--primary-bright) 100%
+        );
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+        color: #fff;
+      }
+      .splash-logo {
+        width: 110px;
+        height: 110px;
+        border-radius: 32px;
+        background: rgba(255, 255, 255, 0.16);
+        backdrop-filter: blur(6px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 52px;
+        margin: 0 auto 22px;
+        animation: pulse 1.8s ease-in-out infinite;
+      }
+      @keyframes pulse {
+        0%,
+        100% {
+          transform: scale(1);
+        }
+        50% {
+          transform: scale(1.06);
+        }
+      }
+      .splash-dots span {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: #fff;
+        display: inline-block;
+        margin: 0 4px;
+        opacity: 0.4;
+        animation: dotBlink 1.2s infinite;
+      }
+      .splash-dots span:nth-child(2) {
+        animation-delay: 0.2s;
+      }
+      .splash-dots span:nth-child(3) {
+        animation-delay: 0.4s;
+      }
+      @keyframes dotBlink {
+        0%,
+        100% {
+          opacity: 0.3;
+        }
+        50% {
+          opacity: 1;
+        }
+      }
+
+      /* ---------- App shell ---------- */
+      .app-shell {
+        display: flex;
+        min-height: 100vh;
+      }
+      .sidebar {
+        width: 260px;
+        background: #fff;
+        border-right: 1px solid var(--line);
+        padding: 22px 16px;
+        flex-shrink: 0;
+        position: fixed;
+        top: 0;
+        left: 0;
+        height: 100vh;
+        overflow-y: auto;
+        z-index: 1030;
+        transition: transform 0.25s ease;
+      }
+      .sidebar-brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 6px 10px 22px;
+      }
+      .sidebar-brand .logo-sm {
+        width: 38px;
+        height: 38px;
+        border-radius: 12px;
+        background: linear-gradient(
+          135deg,
+          var(--primary-bright),
+          var(--primary-deep)
+        );
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #fff;
+      }
+      .nav-fb {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+      }
+      .nav-fb li {
+        margin-bottom: 4px;
+      }
+      .nav-fb a {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 11px 14px;
+        border-radius: 12px;
+        color: var(--muted);
+        text-decoration: none;
+        font-weight: 500;
+        font-size: 14.5px;
+        transition: all 0.15s ease;
+        cursor: pointer;
+      }
+      .nav-fb a i {
+        width: 20px;
+        text-align: center;
+      }
+      .nav-fb a:hover {
+        background: var(--primary-soft);
+        color: var(--primary-deep);
+      }
+      .nav-fb a.active {
+        background: linear-gradient(
+          135deg,
+          var(--primary),
+          var(--primary-deep)
+        );
+        color: #fff;
+        box-shadow: 0 6px 16px rgba(182, 92, 63, 0.25);
+      }
+      .nav-section-label {
+        font-size: 10.5px;
+        font-weight: 700;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: #b7c2bb;
+        margin: 18px 10px 8px;
+      }
+
+      .main-content {
+        margin-left: 260px;
+        flex: 1;
+        min-width: 0;
+      }
+      .topbar {
+        background: #fff;
+        border-bottom: 1px solid var(--line);
+        padding: 14px 28px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 14px;
+        position: sticky;
+        top: 0;
+        z-index: 1020;
+        flex-wrap: wrap;
+      }
+      .search-box {
+        position: relative;
+        max-width: 340px;
+        width: 100%;
+      }
+      .search-box input {
+        border-radius: 12px;
+        border: 1px solid var(--line);
+        padding: 10px 14px 10px 38px;
+        width: 100%;
+        background: var(--cream);
+      }
+      .search-box i {
+        position: absolute;
+        left: 13px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: var(--muted);
+      }
+      .page-body {
+        padding: 26px 28px 60px;
+      }
+
+      .notif-badge {
+        position: absolute;
+        top: -2px;
+        right: -2px;
+        background: var(--orange);
+        color: #fff;
+        font-size: 10px;
+        font-weight: 700;
+        width: 17px;
+        height: 17px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .mobile-toggle {
+        display: none;
+      }
+      @media (max-width: 991px) {
+        .sidebar {
+          transform: translateX(-100%);
+        }
+        .sidebar.show {
+          transform: translateX(0);
+        }
+        .main-content {
+          margin-left: 0;
+        }
+        .mobile-toggle {
+          display: flex;
+        }
+      }
+
+      /* Dark mode */
+      body.dark {
+        --cream: #1c1714;
+        --ink: #f3ede8;
+        --line: #332a22;
+        --muted: #a69a8e;
+        background: #1c1714;
+        --primary-soft: rgba(216, 119, 87, 0.16);
+        --success-soft: rgba(30, 158, 92, 0.16);
+        --orange-soft: rgba(255, 122, 61, 0.16);
+      }
+      body.dark .sidebar,
+      body.dark .topbar,
+      body.dark .card-fb {
+        background: #241e19;
+        border-color: #332a22;
+      }
+      body.dark .search-box input {
+        background: #1c1714;
+        color: #f3ede8;
+        border-color: #332a22;
+      }
+      body.dark .glass {
+        background: rgba(36, 30, 25, 0.75);
+        border-color: #332a22;
+      }
+      body.dark .badge-pending {
+        color: #f2a56e;
+      }
+      body.dark .badge-claimed {
+        color: #e8c77a;
+      }
+      body.dark .badge-pickedup {
+        color: #8fb4f2;
+      }
+      body.dark .badge-delivered,
+      body.dark .badge-confirmed {
+        color: #7fd6a6;
+      }
+      body.dark .badge-expired {
+        background: rgba(255, 255, 255, 0.06);
+        color: #8a8580;
+      }
+      body.dark .btn-fb-outline {
+        background: #241e19;
+        color: var(--primary-bright);
+      }
+      body.dark .role-card {
+        background: #241e19;
+      }
+      body.dark .step-dot,
+      body.dark .otp-input,
+      body.dark .tl-dot {
+        background: #241e19;
+      }
+      body.dark .map-placeholder {
+        background: linear-gradient(
+          135deg,
+          rgba(216, 119, 87, 0.12),
+          rgba(255, 122, 61, 0.12)
+        );
+      }
+
+      /* ---------- Stat cards ---------- */
+      .stat-card {
+        padding: 22px;
+      }
+      .stat-icon {
+        width: 48px;
+        height: 48px;
+        border-radius: 14px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 19px;
+        color: #fff;
+        margin-bottom: 14px;
+      }
+      .stat-value {
+        font-size: 28px;
+        font-weight: 800;
+      }
+      .stat-label {
+        font-size: 13px;
+        color: var(--muted);
+      }
+
+      /* ---------- Badges ---------- */
+      .badge-fb {
+        font-size: 11px;
+        font-weight: 700;
+        padding: 6px 12px;
+        border-radius: 999px;
+        text-transform: capitalize;
+      }
+      .badge-pending {
+        background: var(--orange-soft);
+        color: #b4551e;
+      }
+      .badge-claimed {
+        background: #fff3d6;
+        color: #9a6b00;
+      }
+      .badge-pickedup {
+        background: #e4eeff;
+        color: #2258c7;
+      }
+      .badge-delivered {
+        background: var(--success-soft);
+        color: var(--success-deep);
+      }
+      .badge-confirmed {
+        background: #ddf6e6;
+        color: #0f7a45;
+      }
+      .badge-expired {
+        background: #f1f1f1;
+        color: #8a8a8a;
+      }
+
+      /* ---------- Timeline (signature element) ---------- */
+      .rescue-timeline {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        position: relative;
+        padding: 20px 0;
+      }
+      .rescue-timeline::before {
+        content: "";
+        position: absolute;
+        top: 39px;
+        left: 6%;
+        right: 6%;
+        height: 3px;
+        background: var(--line);
+        z-index: 0;
+      }
+      .rescue-timeline .tl-progress {
+        position: absolute;
+        top: 39px;
+        left: 6%;
+        height: 3px;
+        background: linear-gradient(
+          90deg,
+          var(--primary-bright),
+          var(--primary-deep)
+        );
+        z-index: 1;
+        transition: width 0.5s ease;
+      }
+      .tl-step {
+        flex: 1;
+        text-align: center;
+        position: relative;
+        z-index: 2;
+      }
+      .tl-dot {
+        width: 46px;
+        height: 46px;
+        border-radius: 50%;
+        background: #fff;
+        border: 3px solid var(--line);
+        margin: 0 auto 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 16px;
+        color: #c3cdc7;
+        transition: all 0.3s ease;
+      }
+      .tl-step.done .tl-dot {
+        background: var(--success);
+        border-color: var(--success);
+        color: #fff;
+      }
+      .tl-step.current .tl-dot {
+        background: var(--orange);
+        border-color: var(--orange);
+        color: #fff;
+        animation: pulse 1.4s infinite;
+      }
+      .tl-step-label {
+        font-size: 12.5px;
+        font-weight: 600;
+        color: var(--muted);
+      }
+      .tl-step.done .tl-step-label,
+      .tl-step.current .tl-step-label {
+        color: var(--ink);
+      }
+
+      /* ---------- Progress steps (registration) ---------- */
+      .step-indicator {
+        display: flex;
+        justify-content: center;
+        gap: 10px;
+        margin-bottom: 30px;
+      }
+      .step-dot {
+        width: 34px;
+        height: 34px;
+        border-radius: 50%;
+        background: #fff;
+        border: 2px solid var(--line);
+        color: var(--muted);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 700;
+        font-size: 13px;
+      }
+      .step-dot.active {
+        background: var(--primary);
+        border-color: var(--primary);
+        color: #fff;
+      }
+      .step-dot.done {
+        background: var(--primary-soft);
+        border-color: var(--primary);
+        color: var(--primary-deep);
+      }
+      .step-line {
+        width: 36px;
+        height: 2px;
+        background: var(--line);
+        align-self: center;
+      }
+
+      /* ---------- Role select cards ---------- */
+      .role-card {
+        border: 2px solid var(--line);
+        border-radius: 18px;
+        padding: 24px 16px;
+        text-align: center;
+        cursor: pointer;
+        transition: all 0.18s ease;
+        background: #fff;
+      }
+      .role-card:hover {
+        border-color: var(--primary-bright);
+        transform: translateY(-3px);
+      }
+      .role-card.selected {
+        border-color: var(--primary);
+        background: var(--primary-soft);
+      }
+      .role-card i {
+        font-size: 30px;
+        margin-bottom: 10px;
+        color: var(--primary-deep);
+      }
+
+      /* ---------- Empty state ---------- */
+      .empty-state {
+        text-align: center;
+        padding: 50px 20px;
+        color: var(--muted);
+      }
+      .empty-state i {
+        font-size: 44px;
+        color: var(--line);
+        margin-bottom: 14px;
+      }
+
+      /* ---------- Skeleton ---------- */
+      .skeleton {
+        background: linear-gradient(90deg, #eee 25%, #f6f6f6 37%, #eee 63%);
+        background-size: 400% 100%;
+        animation: sk 1.3s infinite;
+        border-radius: 10px;
+      }
+      @keyframes sk {
+        0% {
+          background-position: 100% 50%;
+        }
+        100% {
+          background-position: 0 50%;
+        }
+      }
+
+      /* ---------- Map placeholder ---------- */
+      .map-placeholder {
+        height: 200px;
+        border-radius: 16px;
+        background: linear-gradient(
+          135deg,
+          var(--primary-soft),
+          var(--orange-soft)
+        );
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
+        color: var(--primary-deep);
+        border: 1.5px dashed var(--primary-bright);
+      }
+
+      /* ---------- Location / route map ---------- */
+      .fb-map {
+        position: relative;
+        height: 440px;
+        border-radius: var(--radius);
+        overflow: hidden;
+        border: 1px solid var(--line);
+        background:
+          radial-gradient(
+            circle at 20% 30%,
+            rgba(30, 158, 92, 0.1),
+            transparent 45%
+          ),
+          radial-gradient(
+            circle at 80% 75%,
+            rgba(255, 122, 61, 0.12),
+            transparent 45%
+          ),
+          linear-gradient(135deg, #eef3ef, #f6efe9);
+        background-color: #eef3ef;
+      }
+      /* faux street grid */
+      .fb-map::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background-image:
+          linear-gradient(rgba(122, 111, 101, 0.12) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(122, 111, 101, 0.12) 1px, transparent 1px);
+        background-size: 46px 46px;
+      }
+      .fb-map-frame {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        border: 0;
+        z-index: 1;
+      }
+      body.dark .fb-map {
+        background:
+          radial-gradient(
+            circle at 20% 30%,
+            rgba(30, 158, 92, 0.16),
+            transparent 45%
+          ),
+          radial-gradient(
+            circle at 80% 75%,
+            rgba(255, 122, 61, 0.16),
+            transparent 45%
+          ),
+          linear-gradient(135deg, #241e19, #1c1714);
+        background-color: #241e19;
+      }
+      .map-route {
+        position: absolute;
+        inset: 0;
+        z-index: 1;
+        pointer-events: none;
+      }
+      .map-pin {
+        position: absolute;
+        z-index: 2;
+        transform: translate(-50%, -100%);
+        text-align: center;
+        width: max-content;
+      }
+      .map-pin .pin-head {
+        width: 40px;
+        height: 40px;
+        border-radius: 50% 50% 50% 0;
+        transform: rotate(-45deg);
+        margin: 0 auto;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #fff;
+        font-size: 15px;
+        box-shadow: 0 8px 18px rgba(20, 60, 35, 0.25);
+        border: 3px solid #fff;
+      }
+      .map-pin .pin-head i {
+        transform: rotate(45deg);
+      }
+      .map-pin .pin-label {
+        margin-top: 6px;
+        font-size: 11px;
+        font-weight: 600;
+        background: #fff;
+        color: var(--ink);
+        padding: 3px 9px;
+        border-radius: 999px;
+        box-shadow: var(--shadow);
+        white-space: nowrap;
+        border: 1px solid var(--line);
+      }
+      body.dark .map-pin .pin-label {
+        background: #241e19;
+        border-color: #332a22;
+      }
+      .pin-me .pin-head {
+        background: #2258c7;
+      }
+      .pin-pickup .pin-head {
+        background: var(--orange);
+      }
+      .pin-drop .pin-head {
+        background: var(--success);
+      }
+      .map-pin .pin-pulse {
+        position: absolute;
+        top: 20px;
+        left: 50%;
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        transform: translate(-50%, -50%);
+        animation: pulse 1.8s ease-in-out infinite;
+        z-index: -1;
+      }
+      .pin-me .pin-pulse {
+        background: rgba(34, 88, 199, 0.22);
+      }
+      .map-legend {
+        position: absolute;
+        left: 16px;
+        bottom: 16px;
+        z-index: 3;
+        background: rgba(255, 255, 255, 0.9);
+        backdrop-filter: blur(8px);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 12px 14px;
+        box-shadow: var(--shadow);
+      }
+      body.dark .map-legend {
+        background: rgba(36, 30, 25, 0.9);
+        border-color: #332a22;
+      }
+      .legend-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 12px;
+        font-weight: 500;
+      }
+      .legend-row + .legend-row {
+        margin-top: 7px;
+      }
+      .legend-dot {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        flex-shrink: 0;
+      }
+      .map-eta {
+        position: absolute;
+        right: 16px;
+        top: 16px;
+        z-index: 3;
+        background: rgba(255, 255, 255, 0.9);
+        backdrop-filter: blur(8px);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 10px 14px;
+        box-shadow: var(--shadow);
+        font-size: 12px;
+      }
+      body.dark .map-eta {
+        background: rgba(36, 30, 25, 0.9);
+        border-color: #332a22;
+      }
+
+      /* ---------- Toast ---------- */
+      .toast-fb {
+        position: fixed;
+        bottom: 26px;
+        right: 26px;
+        z-index: 2000;
+        background: var(--ink);
+        color: #fff;
+        padding: 14px 20px;
+        border-radius: 14px;
+        box-shadow: var(--shadow-lg);
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-weight: 500;
+        font-size: 14px;
+        transform: translateY(20px);
+        opacity: 0;
+        transition: all 0.3s ease;
+        max-width: 320px;
+      }
+      .toast-fb.show {
+        transform: translateY(0);
+        opacity: 1;
+      }
+      .toast-fb i {
+        color: var(--primary-bright);
+      }
+
+      /* ---------- Modal look tweaks ---------- */
+      .modal-content {
+        border-radius: 22px;
+        border: none;
+      }
+
+      /* ---------- Notification dropdown ---------- */
+      .notif-item {
+        padding: 12px 14px;
+        border-radius: 12px;
+        transition: background 0.15s ease;
+      }
+      .notif-item:hover {
+        background: var(--primary-soft);
+      }
+      .notif-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--orange);
+        flex-shrink: 0;
+        margin-top: 6px;
+      }
+
+      /* misc */
+      .avatar-circle {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, var(--orange), #e8621f);
+        color: #fff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 700;
+        font-size: 14px;
+      }
+      .divider-soft {
+        border-color: var(--line);
+        opacity: 1;
+      }
+      .leaderboard-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 10px 6px;
+        border-bottom: 1px solid var(--line);
+      }
+      .rank-pill {
+        width: 28px;
+        height: 28px;
+        border-radius: 8px;
+        background: var(--primary-soft);
+        color: var(--primary-deep);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 700;
+        font-size: 12px;
+      }
+      .upload-box {
+        border: 1.5px dashed var(--line);
+        border-radius: 16px;
+        padding: 28px;
+        text-align: center;
+        color: var(--muted);
+        cursor: pointer;
+        transition: all 0.15s ease;
+      }
+      .upload-box:hover {
+        border-color: var(--primary-bright);
+        background: var(--primary-soft);
+      }
+      .progress-cap {
+        height: 8px;
+        border-radius: 8px;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- ============================================================ SPLASH ============================================================ -->
+    <!-- <section class="screen active" id="screen-splash">
+  <div class="text-center">
+    <div class="splash-logo"><i class="fa-solid fa-leaf"></i></div>
+    <h1 class="text-white mb-1" style="font-size:32px;">FoodBridge</h1>
+    <p class="text-white-50 mb-4">Rescue food. Restore hope.</p>
+    <div class="splash-dots"><span></span><span></span><span></span></div>
+  </div>
+</section> -->
+
+    <!-- ============================================================ LOGIN ============================================================ -->
+    <section class="screen" id="screen-login">
+      <div class="auth-wrap">
+        <div class="auth-card glass text-center">
+          <div class="brand-logo"><i class="fa-solid fa-leaf"></i></div>
+          <h3 class="fw-display mb-1">Welcome to FoodBridge</h3>
+          <p class="text-muted-2 mb-4" style="font-size: 14px">
+            Enter your mobile number to continue
+          </p>
+
+          <div class="text-start mb-3">
+            <label class="small-label mb-2 d-block">Mobile Number</label>
+            <div class="input-group">
+              <span
+                class="input-group-text bg-white"
+                style="border-radius: 14px 0 0 14px; border-color: var(--line)"
+                >+91</span
+              >
+              <input
+                type="tel"
+                maxlength="10"
+                id="mobileInput"
+                class="form-control"
+                placeholder="9999999991"
+                style="
+                  border-radius: 0 14px 14px 0;
+                  border-color: var(--line);
+                  padding: 12px 14px;
+                "
+              />
+            </div>
+            <div class="form-text mt-2" style="font-size: 12px">
+              Demo numbers: <b>9999999991</b> (Donor) ·
+              <b>9999999992</b> (Volunteer) ·
+              <b>9999999993</b> (Recipient) ·
+              <b>9999999994</b> (Admin)<br />
+              Any other 10-digit number → new user registration
+            </div>
+          </div>
+
+          <button class="btn btn-fb w-100" onclick="sendOtp()">
+            <i class="fa-solid fa-paper-plane me-2"></i>Send OTP
+          </button>
+
+          <div class="d-flex align-items-center gap-2 my-3">
+            <hr class="flex-fill divider-soft" />
+            <span class="text-muted-2" style="font-size: 12px">or</span>
+            <hr class="flex-fill divider-soft" />
+          </div>
+
+          <button class="btn btn-fb-outline w-100" onclick="goToRegister()">
+            <i class="fa-solid fa-user-plus me-2"></i>Create an account
+          </button>
+          <p class="text-muted-2 mt-2 mb-0" style="font-size: 12px">
+            New to FoodBridge? Register as a Donor, Volunteer, or Recipient.
+          </p>
+
+          <p class="text-muted-2 mt-4 mb-0" style="font-size: 12px">
+            By continuing, you agree FoodBridge is a coordination platform, not
+            a food supplier.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================ OTP ============================================================ -->
+    <section class="screen" id="screen-otp">
+      <div class="auth-wrap">
+        <div class="auth-card glass text-center">
+          <div class="brand-logo">
+            <i class="fa-solid fa-shield-halved"></i>
+          </div>
+          <h3 class="fw-display mb-1">Verify OTP</h3>
+          <p class="text-muted-2 mb-4" style="font-size: 14px">
+            Code sent to <b id="otpMobileDisplay">+91 XXXXXXXXXX</b>
+          </p>
+
+          <div class="d-flex justify-content-center mb-3" id="otpBoxes">
+            <input type="text" maxlength="1" class="otp-input" data-i="0" />
+            <input type="text" maxlength="1" class="otp-input" data-i="1" />
+            <input type="text" maxlength="1" class="otp-input" data-i="2" />
+            <input type="text" maxlength="1" class="otp-input" data-i="3" />
+            <input type="text" maxlength="1" class="otp-input" data-i="4" />
+            <input type="text" maxlength="1" class="otp-input" data-i="5" />
+          </div>
+          <div class="form-text mb-3" style="font-size: 12px">
+            Demo OTP: <b>123456</b>
+          </div>
+
+          <button class="btn btn-fb w-100 mb-2" onclick="verifyOtp()">
+            <i class="fa-solid fa-check me-2"></i>Verify &amp; Continue
+          </button>
+          <button class="btn btn-ghost" onclick="otpBack()">
+            <i class="fa-solid fa-arrow-left me-1"></i> Change number
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================ REGISTRATION WIZARD ============================================================ -->
+    <section class="screen" id="screen-register">
+      <div class="auth-wrap" style="align-items: flex-start; padding-top: 50px">
+        <div class="auth-card glass" style="max-width: 560px">
+          <div class="text-center mb-2">
+            <div class="brand-logo"><i class="fa-solid fa-user-plus"></i></div>
+            <h3 class="fw-display mb-1">Create your account</h3>
+            <p class="text-muted-2" style="font-size: 14px">
+              We just need a few details to get you started
+            </p>
+          </div>
+
+          <div class="step-indicator">
+            <div class="step-dot active" id="stepDot1">1</div>
+            <div class="step-line"></div>
+            <div class="step-dot" id="stepDot2">2</div>
+            <div class="step-line"></div>
+            <div class="step-dot" id="stepDot3">3</div>
+            <div class="step-line"></div>
+            <div class="step-dot" id="stepDot4">4</div>
+          </div>
+
+          <!-- Step 1: Role -->
+          <div class="reg-step" id="regStep1">
+            <p class="small-label mb-3">Step 1 — Choose your role</p>
+            <div class="row g-3">
+              <div class="col-4">
+                <div
+                  class="role-card"
+                  data-role="donor"
+                  onclick="selectRole(this, 'donor')"
+                >
+                  <i class="fa-solid fa-utensils"></i>
+                  <div class="fw-semibold" style="font-size: 13.5px">Donor</div>
+                </div>
+              </div>
+              <div class="col-4">
+                <div
+                  class="role-card"
+                  data-role="volunteer"
+                  onclick="selectRole(this, 'volunteer')"
+                >
+                  <i class="fa-solid fa-truck-fast"></i>
+                  <div class="fw-semibold" style="font-size: 13.5px">
+                    Volunteer
+                  </div>
+                </div>
+              </div>
+              <div class="col-4">
+                <div
+                  class="role-card"
+                  data-role="recipient"
+                  onclick="selectRole(this, 'recipient')"
+                >
+                  <i class="fa-solid fa-hand-holding-heart"></i>
+                  <div class="fw-semibold" style="font-size: 13.5px">
+                    Recipient
+                  </div>
+                </div>
+              </div>
+            </div>
+            <button class="btn btn-fb w-100 mt-4" onclick="goToRegStep(2)">
+              Continue <i class="fa-solid fa-arrow-right ms-1"></i>
+            </button>
+          </div>
+
+          <!-- Step 2: Personal info -->
+          <div class="reg-step d-none" id="regStep2">
+            <p class="small-label mb-3">Step 2 — Personal information</p>
+            <div class="text-center mb-3">
+              <div
+                class="upload-box"
+                style="
+                  padding: 16px;
+                  border-radius: 50%;
+                  width: 88px;
+                  height: 88px;
+                  margin: 0 auto;
+                  display: flex;
+                  align-items: center;
+                  justify-content: center;
+                "
+              >
+                <i class="fa-solid fa-camera fs-4"></i>
+              </div>
+              <div class="form-text">Upload photo</div>
+            </div>
+            <div class="row g-3">
+              <div class="col-12">
+                <input
+                  class="form-control"
+                  id="regName"
+                  placeholder="Full name / Organization name"
+                  style="border-radius: 12px"
+                />
+              </div>
+              <div class="col-12">
+                <div class="input-group">
+                  <span
+                    class="input-group-text bg-white"
+                    style="border-radius: 12px 0 0 12px; border-color: var(--line)"
+                    >+91</span
+                  >
+                  <input
+                    type="tel"
+                    maxlength="10"
+                    class="form-control"
+                    id="regMobile"
+                    placeholder="Mobile number"
+                    style="border-radius: 0 12px 12px 0"
+                  />
+                </div>
+              </div>
+              <div class="col-12">
+                <input
+                  class="form-control"
+                  id="regAddress"
+                  placeholder="Address"
+                  style="border-radius: 12px"
+                />
+              </div>
+              <div class="col-6">
+                <input
+                  class="form-control"
+                  id="regCity"
+                  placeholder="City"
+                  style="border-radius: 12px"
+                />
+              </div>
+              <div class="col-3">
+                <input
+                  class="form-control"
+                  id="regState"
+                  placeholder="State"
+                  style="border-radius: 12px"
+                />
+              </div>
+              <div class="col-3">
+                <input
+                  class="form-control"
+                  id="regPincode"
+                  placeholder="Pincode"
+                  style="border-radius: 12px"
+                />
+              </div>
+
+              <!-- Recipient-only: individual vs organization + capacity -->
+              <div class="col-12 d-none" id="regRecipientExtra">
+                <label class="small-label mb-2 d-block"
+                  >You are registering as</label
+                >
+                <div class="btn-group w-100 mb-2" role="group">
+                  <input
+                    type="radio"
+                    class="btn-check"
+                    name="recipType"
+                    id="recipIndividual"
+                    checked
+                    onchange="updateRecipType()"
+                  />
+                  <label class="btn btn-fb-outline" for="recipIndividual"
+                    >👤 Individual / Household</label
+                  >
+                  <input
+                    type="radio"
+                    class="btn-check"
+                    name="recipType"
+                    id="recipOrg"
+                    onchange="updateRecipType()"
+                  />
+                  <label class="btn btn-fb-outline" for="recipOrg"
+                    >🏢 Organization / NGO</label
+                  >
+                </div>
+                <input
+                  class="form-control"
+                  id="regCapacity"
+                  placeholder="Household size (number of people)"
+                  style="border-radius: 12px"
+                />
+              </div>
+            </div>
+            <div class="d-flex gap-2 mt-4">
+              <button
+                class="btn btn-fb-outline flex-fill"
+                onclick="goToRegStep(1)"
+              >
+                Back
+              </button>
+              <button class="btn btn-fb flex-fill" onclick="goToRegStep(3)">
+                Continue <i class="fa-solid fa-arrow-right ms-1"></i>
+              </button>
+            </div>
+          </div>
+
+          <!-- Step 3: Location -->
+          <div class="reg-step d-none" id="regStep3">
+            <p class="small-label mb-3">Step 3 — Confirm your location</p>
+            <div class="map-placeholder mb-3">
+              <i class="fa-solid fa-map-location-dot fs-2 mb-2"></i>
+              <div class="fw-semibold" style="font-size: 13.5px">
+                Map preview (demo placeholder)
+              </div>
+            </div>
+            <button
+              class="btn btn-fb-outline w-100 mb-3"
+              onclick="
+                flashToast(
+                  'fa-solid fa-location-crosshairs',
+                  'Location captured via GPS (demo)',
+                )
+              "
+            >
+              <i class="fa-solid fa-location-crosshairs me-2"></i>Use current
+              GPS location
+            </button>
+            <div class="d-flex gap-2">
+              <button
+                class="btn btn-fb-outline flex-fill"
+                onclick="goToRegStep(2)"
+              >
+                Back
+              </button>
+              <button class="btn btn-fb flex-fill" onclick="proceedFromLocation()">
+                Continue <i class="fa-solid fa-arrow-right ms-1"></i>
+              </button>
+            </div>
+          </div>
+
+          <!-- Step 4: Finish -->
+          <div class="reg-step d-none text-center" id="regStep4">
+            <div class="mb-3">
+              <i
+                class="fa-solid fa-circle-check"
+                style="font-size: 56px; color: var(--success)"
+              ></i>
+            </div>
+            <h4 class="fw-display">You're all set!</h4>
+            <p class="text-muted-2" style="font-size: 14px">
+              Your FoodBridge account has been created as a
+              <b id="finishRoleLabel">Donor</b>.
+            </p>
+            <button
+              class="btn btn-fb w-100 mt-2"
+              onclick="finishRegistration()"
+            >
+              Go to Dashboard <i class="fa-solid fa-arrow-right ms-1"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================ APP SHELL (Donor / Volunteer / Recipient) ============================================================ -->
+    <section class="screen" id="screen-app">
+      <div class="app-shell">
+        <!-- Sidebar -->
+        <aside class="sidebar" id="sidebar">
+          <div class="sidebar-brand">
+            <div class="logo-sm"><i class="fa-solid fa-leaf"></i></div>
+            <div>
+              <div class="fw-bold" style="font-size: 15px; line-height: 1">
+                FoodBridge
+              </div>
+              <div class="text-muted-2" style="font-size: 11px" id="roleTag">
+                Donor
+              </div>
+            </div>
+          </div>
+
+          <ul class="nav-fb" id="sidebarNav">
+            <!-- injected per role -->
+          </ul>
+        </aside>
+
+        <!-- Main -->
+        <div class="main-content">
+          <div class="topbar">
+            <div class="d-flex align-items-center gap-2">
+              <button
+                class="btn-icon mobile-toggle"
+                onclick="
+                  document.getElementById('sidebar').classList.toggle('show')
+                "
+              >
+                <i class="fa-solid fa-bars"></i>
+              </button>
+              <div class="search-box d-none d-md-block">
+                <i class="fa-solid fa-magnifying-glass"></i>
+                <input
+                  type="text"
+                  placeholder="Search listings, NGOs, volunteers..."
+                />
+              </div>
+            </div>
+            <div class="d-flex align-items-center gap-2">
+              <button
+                class="active-toggle"
+                id="activeToggle"
+                onclick="toggleActive()"
+                title="Toggle your availability"
+              >
+                <span class="active-dot"></span>
+                <span id="activeLabel">Offline</span>
+              </button>
+
+              <button class="btn-icon" onclick="toggleDark()">
+                <i class="fa-solid fa-circle-half-stroke" id="darkIcon"></i>
+              </button>
+
+              <div class="dropdown">
+                <button class="btn-icon" data-bs-toggle="dropdown">
+                  <i class="fa-solid fa-bell"></i>
+                  <span class="notif-badge" id="notifBadge">3</span>
+                </button>
+                <div
+                  class="dropdown-menu dropdown-menu-end p-2 shadow-lg border-0"
+                  style="width: 320px; border-radius: 16px"
+                  id="notifList"
+                ></div>
+              </div>
+
+              <div class="dropdown">
+                <button
+                  class="btn d-flex align-items-center gap-2 border-0"
+                  data-bs-toggle="dropdown"
+                >
+                  <div class="avatar-circle" id="topAvatar">D</div>
+                </button>
+                <ul
+                  class="dropdown-menu dropdown-menu-end shadow-lg border-0 p-2"
+                  style="border-radius: 16px"
+                >
+                  <li>
+                    <a
+                      class="dropdown-item rounded-3 py-2"
+                      onclick="navTo('profile')"
+                      ><i class="fa-solid fa-user me-2"></i>Profile</a
+                    >
+                  </li>
+                  <li>
+                    <a
+                      class="dropdown-item rounded-3 py-2"
+                      onclick="navTo('settings')"
+                      ><i class="fa-solid fa-gear me-2"></i>Settings</a
+                    >
+                  </li>
+                  <li>
+                    <a
+                      class="dropdown-item rounded-3 py-2"
+                      onclick="
+                        flashToast(
+                          'fa-solid fa-circle-info',
+                          'Help center coming soon',
+                        )
+                      "
+                      ><i class="fa-solid fa-circle-question me-2"></i>Help</a
+                    >
+                  </li>
+                  <li><hr class="dropdown-divider" /></li>
+                  <li>
+                    <a
+                      class="dropdown-item rounded-3 py-2 text-danger"
+                      onclick="logout()"
+                      ><i class="fa-solid fa-right-from-bracket me-2"></i
+                      >Logout</a
+                    >
+                  </li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          <div class="page-body" id="pageBody"><!-- injected per view --></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Toast -->
+    <div class="toast-fb" id="toastFb">
+      <i class="fa-solid fa-circle-check"></i><span id="toastMsg">Done</span>
+    </div>
+
+    <!-- Certificate Modal -->
+    <div class="modal fade" id="certModal" tabindex="-1">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content p-4 text-center">
+          <button class="btn-close ms-auto" data-bs-dismiss="modal"></button>
+          <div class="mb-2">
+            <i
+              class="fa-solid fa-award"
+              style="font-size: 50px; color: var(--primary)"
+            ></i>
+          </div>
+          <h4 class="fw-display">Certificate of Donation</h4>
+          <p class="text-muted-2" style="font-size: 13px">
+            Issued by FoodBridge
+          </p>
+          <div
+            class="text-start mt-3"
+            id="certBody"
+            style="font-size: 14px"
+          ></div>
+          <button
+            class="btn btn-fb w-100 mt-4"
+            onclick="
+              flashToast('fa-solid fa-download', 'Certificate PDF downloaded')
+            "
+          >
+            <i class="fa-solid fa-download me-2"></i>Download PDF
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Pickup Modal -->
+    <div class="modal fade" id="pickupModal" tabindex="-1">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content p-4">
+          <div class="d-flex justify-content-between align-items-start mb-3">
+            <h5 class="fw-display mb-0">Pickup Details</h5>
+            <button class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div id="pickupBody"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Delivery Modal -->
+    <div class="modal fade" id="deliveryModal" tabindex="-1">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content p-4">
+          <div class="d-flex justify-content-between align-items-start mb-3">
+            <h5 class="fw-display mb-0">Delivery Details</h5>
+            <button class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div id="deliveryBody"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Listing Detail Modal -->
+    <div class="modal fade" id="listingDetailModal" tabindex="-1">
+      <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content p-4">
+          <div class="d-flex justify-content-between align-items-start mb-2">
+            <h5 class="fw-display mb-0">Listing Details</h5>
+            <button class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div id="listingDetailBody"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bootstrap + Chart.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/5.3.2/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+
+    <script>
+      /* ============================================================
+   DUMMY DATA
+============================================================ */
+      const DUMMY_USERS = [
+        {
+          mobile: "9999999991",
+          role: "donor",
+          name: "Grand Plaza Hotel",
+          city: "Ahmedabad",
+        },
+        {
+          mobile: "9999999992",
+          role: "volunteer",
+          name: "Priya Sharma",
+          city: "Ahmedabad",
+        },
+        {
+          mobile: "9999999993",
+          role: "recipient",
+          name: "Hope Community Kitchen",
+          city: "Ahmedabad",
+        },
+        {
+          mobile: "9999999994",
+          role: "admin",
+          name: "Platform Admin",
+          city: "Ahmedabad",
+        },
+      ];
+
+      // Accounts pending / active — for the Admin verification queue
+      let ACCOUNTS = [
+        { id: 1, name: "Priya Sharma", type: "Volunteer", city: "Ahmedabad", status: "verified", joined: "2 months ago" },
+        { id: 2, name: "Arjun Mehta", type: "Volunteer", city: "Ahmedabad", status: "pending", joined: "2 days ago" },
+        { id: 3, name: "Hope Community Kitchen", type: "Organization", city: "Ahmedabad", status: "verified", joined: "3 months ago" },
+        { id: 4, name: "Sunrise Shelter", type: "Organization", city: "Ahmedabad", status: "pending", joined: "1 day ago" },
+        { id: 5, name: "Kavya Iyer", type: "Volunteer", city: "Ahmedabad", status: "pending", joined: "6 hours ago" },
+        { id: 6, name: "New Path NGO", type: "Organization", city: "Ahmedabad", status: "suspended", joined: "5 months ago" },
+      ];
+
+      // Dispute resolution queue
+      let DISPUTES = [
+        { id: 1, listing: "Riverside Banquet Hall", raisedBy: "Hope Community Kitchen", reason: "Delivery marked complete but food never arrived", priority: "high", status: "open" },
+        { id: 2, listing: "Green Leaf Bakery", raisedBy: "Arjun Mehta", reason: "Recipient unreachable at drop-off location", priority: "medium", status: "open" },
+        { id: 3, listing: "Sunshine Cafe", raisedBy: "Sunshine Cafe", reason: "Quantity received did not match the listing", priority: "low", status: "open" },
+      ];
+
+      const NGO_LIST = [
+        "Hope Community Kitchen",
+        "Sunrise Shelter",
+        "New Path NGO",
+        "Asha Foundation",
+        "Seva Bhavan",
+      ];
+      const VOLUNTEER_NAMES = [
+        "Priya Sharma",
+        "Arjun Mehta",
+        "Kavya Iyer",
+        "Rohit Verma",
+        "Sneha Gupta",
+      ];
+
+      // Receivers near the volunteer's location + live availability
+      const NEARBY_RECEIVERS = [
+        { name: "Hope Community Kitchen", dist: 1.2, active: true },
+        { name: "Sunrise Shelter", dist: 2.6, active: true },
+        { name: "Asha Foundation", dist: 3.4, active: true },
+        { name: "Seva Bhavan", dist: 4.1, active: false },
+        { name: "New Path NGO", dist: 4.8, active: true },
+      ];
+
+      let LISTINGS = [
+        mkListing(
+          1,
+          "Grand Plaza Hotel",
+          "Veg",
+          "Lunch",
+          "40 servings",
+          "Just Cooked",
+          "1:00 PM - 2:00 PM",
+          "MG Road",
+          "claimed",
+          "Priya Sharma",
+        ),
+        mkListing(
+          2,
+          "Riverside Banquet Hall",
+          "Non-Veg",
+          "Dinner",
+          "75 servings",
+          "2 Hours Old",
+          "8:00 PM - 9:30 PM",
+          "Riverside Ave",
+          "pending",
+          null,
+        ),
+        mkListing(
+          3,
+          "Green Leaf Bakery",
+          "Veg",
+          "Snacks",
+          "60 units",
+          "Packed Food",
+          "5:00 PM - 6:00 PM",
+          "Market Street",
+          "confirmed",
+          "Arjun Mehta",
+        ),
+        mkListing(
+          4,
+          "Sunshine Cafe",
+          "Veg",
+          "Breakfast",
+          "30 servings",
+          "Just Cooked",
+          "8:00 AM - 9:00 AM",
+          "Park Street",
+          "delivered",
+          "Kavya Iyer",
+        ),
+        mkListing(
+          5,
+          "City Wedding Hall",
+          "Non-Veg",
+          "Dinner",
+          "120 servings",
+          "Just Cooked",
+          "10:00 PM - 11:00 PM",
+          "Ring Road",
+          "pickedup",
+          "Priya Sharma",
+        ),
+        mkListing(
+          6,
+          "Daily Fresh Mart",
+          "Veg",
+          "Snacks",
+          "25 units",
+          "Packed Food",
+          "4:00 PM - 5:00 PM",
+          "Station Road",
+          "expired",
+          null,
+        ),
+      ];
+      let notifSeed = [
+        {
+          icon: "fa-solid fa-circle-plus",
+          text: "New listing posted near you — 40 servings, MG Road",
+          time: "5 min ago",
+        },
+        {
+          icon: "fa-solid fa-truck",
+          text: "Priya Sharma claimed your listing",
+          time: "22 min ago",
+        },
+        {
+          icon: "fa-solid fa-award",
+          text: "Certificate generated for Green Leaf Bakery",
+          time: "1 hr ago",
+        },
+      ];
+
+      function mkListing(
+        id,
+        donor,
+        foodType,
+        mealType,
+        qty,
+        freshness,
+        pickupTime,
+        address,
+        status,
+        volunteer,
+      ) {
+        return {
+          id,
+          donor,
+          foodType,
+          mealType,
+          quantity: qty,
+          freshness,
+          pickupTime,
+          address,
+          status,
+          volunteer,
+          recipient:
+            status === "delivered" ||
+            status === "confirmed" ||
+            status === "pickedup"
+              ? NGO_LIST[id % NGO_LIST.length]
+              : null,
+          notes: "Please bring insulated containers if possible.",
+        };
+      }
+
+      let currentUser = null;
+      let selectedRole = null;
+      let pendingMobile = "";
+      let otpContext = "login"; // "login" | "register"
+      let mobileVerified = false;
+      let darkMode = false;
+      let listingCounter = 100;
+      let editingListingId = null;
+
+      /* ============================================================
+   SCREEN ROUTER
+============================================================ */
+      function showScreen(id) {
+        document
+          .querySelectorAll(".screen")
+          .forEach((s) => s.classList.remove("active"));
+        document.getElementById(id).classList.add("active");
+        window.scrollTo(0, 0);
+      }
+
+      setTimeout(() => showScreen("screen-login"), 1900);
+
+      /* ============================================================
+   AUTH FLOW
+============================================================ */
+      function sendOtp() {
+        const mobile = document.getElementById("mobileInput").value.trim();
+        if (mobile.length !== 10 || isNaN(mobile)) {
+          flashToast(
+            "fa-solid fa-triangle-exclamation",
+            "Please enter a valid 10-digit mobile number",
+          );
+          return;
+        }
+        pendingMobile = mobile;
+        otpContext = "login";
+        document.getElementById("otpMobileDisplay").textContent =
+          "+91 " + mobile;
+        showScreen("screen-otp");
+        flashToast(
+          "fa-solid fa-paper-plane",
+          "OTP sent — use 123456 for this demo",
+        );
+        document.querySelectorAll(".otp-input").forEach((i) => (i.value = ""));
+        document.querySelector(".otp-input[data-i='0']").focus();
+      }
+
+      document.addEventListener("input", (e) => {
+        if (e.target.classList.contains("otp-input")) {
+          const i = parseInt(e.target.dataset.i);
+          if (e.target.value && i < 5) {
+            document.querySelector(`.otp-input[data-i='${i + 1}']`).focus();
+          }
+        }
+      });
+
+      function verifyOtp() {
+        const code = Array.from(document.querySelectorAll(".otp-input"))
+          .map((i) => i.value)
+          .join("");
+        if (code !== "123456") {
+          flashToast(
+            "fa-solid fa-triangle-exclamation",
+            "Incorrect OTP — try 123456",
+          );
+          return;
+        }
+        // Verifying the mobile mid-registration → return to the wizard's finish step
+        if (otpContext === "register") {
+          mobileVerified = true;
+          otpContext = "login";
+          flashToast(
+            "fa-solid fa-mobile-screen-button",
+            "Mobile verified successfully",
+          );
+          showScreen("screen-register");
+          goToRegStep(4);
+          return;
+        }
+        const existing = DUMMY_USERS.find((u) => u.mobile === pendingMobile);
+        if (existing) {
+          currentUser = { ...existing };
+          flashToast(
+            "fa-solid fa-circle-check",
+            "Welcome back, " + currentUser.name + "!",
+          );
+          enterApp();
+        } else {
+          // New number logging in — OTP already verified here
+          mobileVerified = true;
+          flashToast(
+            "fa-solid fa-circle-info",
+            "New number — let's set up your account",
+          );
+          const regMobile = document.getElementById("regMobile");
+          if (regMobile) regMobile.value = pendingMobile;
+          showScreen("screen-register");
+          goToRegStep(1);
+        }
+      }
+      function otpBack() {
+        if (otpContext === "register") {
+          otpContext = "login";
+          showScreen("screen-register");
+          goToRegStep(2);
+        } else {
+          showScreen("screen-login");
+        }
+      }
+
+      /* ---------- Registration wizard ---------- */
+      function selectRole(el, role) {
+        document
+          .querySelectorAll(".role-card")
+          .forEach((c) => c.classList.remove("selected"));
+        el.classList.add("selected");
+        selectedRole = role;
+      }
+      function updateRecipType() {
+        const isOrg = document.getElementById("recipOrg").checked;
+        document.getElementById("regCapacity").placeholder = isOrg
+          ? "Daily serving capacity (meals/day)"
+          : "Household size (number of people)";
+      }
+      function goToRegStep(step) {
+        if (step === 2 && !selectedRole) {
+          flashToast(
+            "fa-solid fa-triangle-exclamation",
+            "Please choose a role first",
+          );
+          return;
+        }
+        for (let i = 1; i <= 4; i++) {
+          document
+            .getElementById("regStep" + i)
+            .classList.toggle("d-none", i !== step);
+          const dot = document.getElementById("stepDot" + i);
+          dot.classList.toggle("active", i === step);
+          dot.classList.toggle("done", i < step);
+        }
+        if (step === 2) {
+          // Show recipient type/capacity only when registering as a recipient
+          document
+            .getElementById("regRecipientExtra")
+            .classList.toggle("d-none", selectedRole !== "recipient");
+        }
+        if (step === 4) {
+          const label =
+            selectedRole.charAt(0).toUpperCase() + selectedRole.slice(1);
+          document.getElementById("finishRoleLabel").textContent = label;
+        }
+      }
+      function goToRegister() {
+        // If a valid number was typed on the login screen, carry it over
+        const typed = document.getElementById("mobileInput").value.trim();
+        pendingMobile = typed.length === 10 && !isNaN(typed) ? typed : "";
+        selectedRole = null;
+        mobileVerified = false;
+        document
+          .querySelectorAll(".role-card")
+          .forEach((c) => c.classList.remove("selected"));
+        showScreen("screen-register");
+        goToRegStep(1);
+        // Prefill the mobile field inside the wizard
+        const regMobile = document.getElementById("regMobile");
+        if (regMobile) regMobile.value = pendingMobile;
+      }
+      // Called from the wizard's location step. Requires the mobile to be
+      // OTP-verified before advancing to the final "all set" step.
+      function proceedFromLocation() {
+        const mobile = document.getElementById("regMobile").value.trim();
+        if (mobile.length !== 10 || isNaN(mobile)) {
+          flashToast(
+            "fa-solid fa-triangle-exclamation",
+            "Please enter a valid 10-digit mobile number",
+          );
+          goToRegStep(2);
+          return;
+        }
+        // Already verified this exact number (e.g. via login) → skip re-OTP
+        if (mobileVerified && mobile === pendingMobile) {
+          goToRegStep(4);
+          return;
+        }
+        startRegisterOtp(mobile);
+      }
+      function startRegisterOtp(mobile) {
+        pendingMobile = mobile;
+        mobileVerified = false;
+        otpContext = "register";
+        document.getElementById("otpMobileDisplay").textContent =
+          "+91 " + mobile;
+        showScreen("screen-otp");
+        flashToast(
+          "fa-solid fa-paper-plane",
+          "Verify your mobile — use OTP 123456 for this demo",
+        );
+        document.querySelectorAll(".otp-input").forEach((i) => (i.value = ""));
+        document.querySelector(".otp-input[data-i='0']").focus();
+      }
+      function finishRegistration() {
+        const name =
+          document.getElementById("regName").value.trim() || "New User";
+        const mobile =
+          (document.getElementById("regMobile") &&
+            document.getElementById("regMobile").value.trim()) ||
+          pendingMobile ||
+          "";
+        currentUser = {
+          mobile: mobile,
+          role: selectedRole,
+          name: name,
+          city: document.getElementById("regCity").value || "Your City",
+        };
+        if (selectedRole === "recipient") {
+          currentUser.recipientType = document.getElementById("recipOrg")
+            .checked
+            ? "Organization"
+            : "Individual";
+          currentUser.capacity =
+            document.getElementById("regCapacity").value.trim() || "—";
+        }
+        DUMMY_USERS.push(currentUser);
+        flashToast(
+          "fa-solid fa-circle-check",
+          "Account created — welcome to FoodBridge!",
+        );
+        enterApp();
+      }
+
+      function logout() {
+        currentUser = null;
+        showScreen("screen-login");
+        document.getElementById("mobileInput").value = "";
+      }
+
+      /* ============================================================
+   APP ENTRY / SIDEBAR PER ROLE
+============================================================ */
+      const NAV = {
+        donor: [
+          { id: "dashboard", icon: "fa-solid fa-gauge", label: "Dashboard" },
+          {
+            id: "create",
+            icon: "fa-solid fa-circle-plus",
+            label: "Create Listing",
+          },
+          {
+            id: "listings",
+            icon: "fa-solid fa-list-check",
+            label: "My Listings",
+          },
+          {
+            id: "certificates",
+            icon: "fa-solid fa-award",
+            label: "Certificates",
+          },
+          { id: "profile", icon: "fa-solid fa-user", label: "Profile" },
+        ],
+        volunteer: [
+          { id: "dashboard", icon: "fa-solid fa-gauge", label: "Dashboard" },
+          {
+            id: "nearby",
+            icon: "fa-solid fa-map-location-dot",
+            label: "Nearby Listings",
+          },
+          {
+            id: "deliveries",
+            icon: "fa-solid fa-truck-fast",
+            label: "My Deliveries",
+          },
+          {
+            id: "history",
+            icon: "fa-solid fa-clock-rotate-left",
+            label: "History",
+          },
+          {
+            id: "leaderboard",
+            icon: "fa-solid fa-ranking-star",
+            label: "Leaderboard",
+          },
+          { id: "profile", icon: "fa-solid fa-user", label: "Profile" },
+        ],
+        recipient: [
+          { id: "dashboard", icon: "fa-solid fa-gauge", label: "Dashboard" },
+          {
+            id: "incoming",
+            icon: "fa-solid fa-box-open",
+            label: "Incoming Food",
+          },
+          {
+            id: "track",
+            icon: "fa-solid fa-location-crosshairs",
+            label: "Track Delivery",
+          },
+          {
+            id: "history",
+            icon: "fa-solid fa-clock-rotate-left",
+            label: "Distribution History",
+          },
+          { id: "reports", icon: "fa-solid fa-chart-column", label: "Reports" },
+          { id: "profile", icon: "fa-solid fa-user", label: "Profile" },
+        ],
+        admin: [
+          { id: "dashboard", icon: "fa-solid fa-gauge", label: "Dashboard" },
+          {
+            id: "adminListings",
+            icon: "fa-solid fa-list-check",
+            label: "All Listings",
+          },
+          {
+            id: "verifications",
+            icon: "fa-solid fa-user-shield",
+            label: "Verifications",
+          },
+          {
+            id: "disputes",
+            icon: "fa-solid fa-triangle-exclamation",
+            label: "Disputes",
+          },
+          {
+            id: "adminReports",
+            icon: "fa-solid fa-chart-column",
+            label: "Reports",
+          },
+          { id: "profile", icon: "fa-solid fa-user", label: "Profile" },
+        ],
+      };
+
+      let activeView = "dashboard";
+
+      function enterApp() {
+        showScreen("screen-app");
+        document.getElementById("roleTag").textContent =
+          currentUser.role.charAt(0).toUpperCase() + currentUser.role.slice(1);
+        document.getElementById("topAvatar").textContent = currentUser.name
+          .charAt(0)
+          .toUpperCase();
+        buildSidebar();
+        renderNotifications();
+        setupActiveToggle();
+        activeView = "dashboard";
+        navTo("dashboard");
+      }
+
+      /* ---------- Availability (Volunteer / Recipient) ---------- */
+      let isActive = true;
+      function setupActiveToggle() {
+        const toggle = document.getElementById("activeToggle");
+        const show =
+          currentUser.role === "volunteer" ||
+          currentUser.role === "recipient";
+        toggle.style.display = show ? "inline-flex" : "none";
+        if (show) {
+          isActive = true; // default to available on login
+          applyActiveState();
+        }
+      }
+      function applyActiveState() {
+        const toggle = document.getElementById("activeToggle");
+        toggle.classList.toggle("is-on", isActive);
+        document.getElementById("activeLabel").textContent = isActive
+          ? currentUser.role === "volunteer"
+            ? "Available"
+            : "Accepting"
+          : "Offline";
+      }
+      let recipientOfferTimer = null;
+      function toggleActive() {
+        isActive = !isActive;
+        applyActiveState();
+        flashToast(
+          isActive ? "fa-solid fa-circle-check" : "fa-solid fa-moon",
+          isActive
+            ? currentUser.role === "volunteer"
+              ? "You're now available for pickups"
+              : "You're now accepting deliveries"
+            : "You're now offline — you won't be matched",
+        );
+        // Recipients only get food-offer notifications while they are active
+        if (currentUser.role === "recipient") {
+          if (recipientOfferTimer) {
+            clearTimeout(recipientOfferTimer);
+            recipientOfferTimer = null;
+          }
+          if (isActive) {
+            pushNotification(
+              "fa-solid fa-box-open",
+              "You're active — new surplus food is available near you to accept",
+            );
+            // Simulate a fresh offer arriving shortly after going active
+            recipientOfferTimer = setTimeout(() => {
+              if (!isActive) return;
+              pushNotification(
+                "fa-solid fa-bell",
+                "New donation matched to you — open Incoming Food to accept",
+              );
+              flashToast(
+                "fa-solid fa-bell",
+                "New food offer available near you",
+              );
+              if (activeView === "incoming") renderIncoming();
+            }, 4000);
+          }
+        }
+        // Refresh the current view so availability-dependent states update
+        navTo(activeView);
+      }
+
+      function buildSidebar() {
+        const items = NAV[currentUser.role];
+        const html = items
+          .map(
+            (i) =>
+              `<li><a class="${i.id === activeView ? "active" : ""}" data-view="${i.id}" onclick="navTo('${i.id}')"><i class="${i.icon}"></i> ${i.label}</a></li>`,
+          )
+          .join("");
+        document.getElementById("sidebarNav").innerHTML =
+          html +
+          `<li class="mt-3"><a onclick="navTo('settings')"><i class="fa-solid fa-gear"></i> Settings</a></li>` +
+          `<li><a class="text-danger" onclick="logout()"><i class="fa-solid fa-right-from-bracket"></i> Logout</a></li>`;
+      }
+
+      function navTo(view) {
+        activeView = view;
+        editingListingId = null; // clear edit mode on any sidebar navigation
+        document
+          .querySelectorAll("#sidebarNav a")
+          .forEach((a) =>
+            a.classList.toggle("active", a.dataset.view === view),
+          );
+        document.getElementById("sidebar").classList.remove("show");
+        const renderers = {
+          dashboard: renderDashboard,
+          create: renderCreateListing,
+          listings: renderMyListings,
+          certificates: renderCertificates,
+          nearby: renderNearby,
+          deliveries: renderDeliveries,
+          history: renderHistory,
+          leaderboard: renderLeaderboard,
+          incoming: renderIncoming,
+          track: renderTrackDelivery,
+          reports: renderReports,
+          adminListings: renderAdminListings,
+          verifications: renderVerifications,
+          disputes: renderDisputes,
+          adminReports: renderAdminReports,
+          profile: renderProfile,
+          settings: renderSettings,
+        };
+        (renderers[view] || renderDashboard)();
+      }
+
+      /* ============================================================
+   NOTIFICATIONS
+============================================================ */
+      function renderNotifications() {
+        document.getElementById("notifBadge").textContent = notifSeed.length;
+        document.getElementById("notifBadge").style.display = notifSeed.length
+          ? "flex"
+          : "none";
+        document.getElementById("notifList").innerHTML = `
+    <div class="px-2 py-1 fw-semibold" style="font-size:14px;">Notifications</div>
+    ${
+      notifSeed
+        .map(
+          (n) => `
+      <div class="notif-item d-flex gap-2">
+        <span class="notif-dot"></span>
+        <div>
+          <div style="font-size:13px;">${n.text}</div>
+          <div class="text-muted-2" style="font-size:11px;">${n.time}</div>
+        </div>
+      </div>`,
+        )
+        .join("") ||
+      `<div class="text-muted-2 text-center py-3" style="font-size:13px;">No notifications</div>`
+    }
+  `;
+      }
+      function pushNotification(icon, text) {
+        notifSeed.unshift({ icon, text, time: "just now" });
+        renderNotifications();
+      }
+
+      /* ============================================================
+   TOAST
+============================================================ */
+      function flashToast(icon, msg) {
+        const t = document.getElementById("toastFb");
+        t.querySelector("i").className = icon;
+        document.getElementById("toastMsg").textContent = msg;
+        t.classList.add("show");
+        clearTimeout(window.__toastTimer);
+        window.__toastTimer = setTimeout(
+          () => t.classList.remove("show"),
+          2800,
+        );
+      }
+
+      function toggleDark() {
+        darkMode = !darkMode;
+        document.body.classList.toggle("dark", darkMode);
+        document.getElementById("darkIcon").className = darkMode
+          ? "fa-solid fa-sun"
+          : "fa-solid fa-circle-half-stroke";
+      }
+
+      /* ============================================================
+   BADGE HELPER
+============================================================ */
+      function statusBadge(status) {
+        const map = {
+          pending: "Pending",
+          claimed: "Claimed",
+          pickedup: "Picked Up",
+          delivered: "Delivered",
+          confirmed: "Confirmed",
+          expired: "Expired",
+        };
+        return `<span class="badge-fb badge-${status}">${map[status] || status}</span>`;
+      }
+
+      /* ============================================================
+   DASHBOARD (role-aware)
+============================================================ */
+      function renderDashboard() {
+        if (currentUser.role === "donor") return renderDonorDashboard();
+        if (currentUser.role === "volunteer") return renderVolunteerDashboard();
+        if (currentUser.role === "admin") return renderAdminDashboard();
+        return renderRecipientDashboard();
+      }
+
+      function renderDonorDashboard() {
+        const mine = LISTINGS.filter((l) => l.donor === currentUser.name);
+        const totalMeals = mine.reduce(
+          (s, l) => s + parseInt(l.quantity) || 0,
+          0,
+        );
+        const confirmedCount = mine.filter(
+          (l) => l.status === "confirmed",
+        ).length;
+
+        document.getElementById("pageBody").innerHTML = `
+    <h3 class="fw-display mb-1">Good day, ${currentUser.name.split(" ")[0]} 👋</h3>
+    <p class="text-muted-2 mb-4">Here's your impact so far.</p>
+
+    <div class="row g-3 mb-4">
+      ${statCard("fa-solid fa-bowl-food", "var(--primary)", totalMeals || 165, "Meals Donated")}
+      ${statCard("fa-solid fa-calendar-day", "var(--orange)", "40", "Today's Donation")}
+      ${statCard("fa-solid fa-boxes-stacked", "#2258C7", mine.length || 12, "Total Donations")}
+      ${statCard("fa-solid fa-award", "#9A6B00", confirmedCount || 8, "Certificates")}
+    </div>
+
+    <div class="row g-3">
+      <div class="col-lg-7">
+        <div class="card-fb p-4">
+          <h6 class="fw-semibold mb-3">Monthly Donations</h6>
+          <canvas id="chartDonor" height="150"></canvas>
+        </div>
+      </div>
+      <div class="col-lg-5">
+        <div class="card-fb p-4 h-100">
+          <h6 class="fw-semibold mb-3">Nearby NGOs</h6>
+          ${NGO_LIST.slice(0, 4)
+            .map(
+              (n) => `
+            <div class="d-flex align-items-center gap-2 mb-3">
+              <div class="avatar-circle" style="background:var(--primary-soft); color:var(--primary-deep); font-size:13px;">${n.charAt(0)}</div>
+              <div>
+                <div style="font-size:13.5px; font-weight:600;">${n}</div>
+                <div class="text-muted-2" style="font-size:11.5px;">${(1 + Math.random() * 4).toFixed(1)} km away</div>
+              </div>
+            </div>`,
+            )
+            .join("")}
+        </div>
+      </div>
+    </div>
+
+    <h6 class="fw-semibold mt-4 mb-3">Recent Activity</h6>
+    <div class="card-fb p-3">
+      ${
+        mine
+          .slice(0, 4)
+          .map(
+            (l) => `
+        <div class="d-flex justify-content-between align-items-center py-2 border-bottom divider-soft">
+          <div>
+            <div style="font-size:13.5px; font-weight:600;">${l.foodType} · ${l.mealType} — ${l.quantity}</div>
+            <div class="text-muted-2" style="font-size:11.5px;">${l.pickupTime} · ${l.address}</div>
+          </div>
+          ${statusBadge(l.status)}
+        </div>`,
+          )
+          .join("") || emptyState("fa-solid fa-inbox", "No recent activity yet")
+      }
+    </div>
+  `;
+        drawChart(
+          "chartDonor",
+          ["Jan", "Feb", "Mar", "Apr", "May", "Jun"],
+          [120, 150, 90, 200, 175, 230],
+          "var(--primary)",
+        );
+      }
+
+      function renderVolunteerDashboard() {
+        const mine = LISTINGS.filter((l) => l.volunteer === currentUser.name);
+        document.getElementById("pageBody").innerHTML = `
+    <h3 class="fw-display mb-1">Hey, ${currentUser.name.split(" ")[0]} 🚴</h3>
+    <p class="text-muted-2 mb-4">Thanks for keeping food moving.</p>
+
+    <div class="row g-3 mb-4">
+      ${statCard("fa-solid fa-truck", "var(--primary)", mine.length || 18, "Total Deliveries")}
+      ${statCard("fa-solid fa-star", "var(--orange)", "540", "Points")}
+      ${statCard("fa-solid fa-ranking-star", "#2258C7", "#3", "Leaderboard Rank")}
+      ${statCard("fa-solid fa-bowl-food", "#9A6B00", "890", "Meals Helped")}
+    </div>
+
+    <div class="row g-3">
+      <div class="col-lg-7">
+        <div class="card-fb p-4">
+          <h6 class="fw-semibold mb-3">Volunteer Performance</h6>
+          <canvas id="chartVol" height="150"></canvas>
+        </div>
+      </div>
+      <div class="col-lg-5">
+        <div class="card-fb p-4 h-100">
+          <h6 class="fw-semibold mb-3">Badges Earned</h6>
+          <div class="d-flex flex-wrap gap-2">
+            ${[
+              "First Delivery",
+              "10 Deliveries",
+              "Speed Runner",
+              "Night Owl",
+              "100 Meals",
+            ]
+              .map(
+                (b) => `
+              <span class="badge-fb badge-confirmed"><i class="fa-solid fa-medal me-1"></i>${b}</span>`,
+              )
+              .join("")}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <h6 class="fw-semibold mt-4 mb-3">Open Listings Near You</h6>
+    <div id="dashOpenListings"></div>
+  `;
+        drawChart(
+          "chartVol",
+          ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+          [2, 4, 3, 5, 6, 4, 7],
+          "var(--orange)",
+        );
+        document.getElementById("dashOpenListings").innerHTML =
+          openListingsHtml(2);
+      }
+
+      function renderRecipientDashboard() {
+        document.getElementById("pageBody").innerHTML = `
+    <h3 class="fw-display mb-1">Welcome, ${currentUser.name} ❤️</h3>
+    <p class="text-muted-2 mb-4">Here's what's coming your way today.</p>
+
+    <div class="row g-3 mb-4">
+      ${statCard("fa-solid fa-bowl-food", "var(--primary)", "180", "Today's Meals")}
+      ${statCard("fa-solid fa-truck", "var(--orange)", "3", "Upcoming Deliveries")}
+      ${statCard("fa-solid fa-hourglass-half", "#2258C7", "1", "Pending Deliveries")}
+      ${statCard("fa-solid fa-warehouse", "#9A6B00", "72%", "Storage Capacity")}
+    </div>
+
+    <div class="row g-3">
+      <div class="col-lg-7">
+        <div class="card-fb p-4">
+          <h6 class="fw-semibold mb-3">NGO Distribution</h6>
+          <canvas id="chartRecipient" height="150"></canvas>
+        </div>
+      </div>
+      <div class="col-lg-5">
+        <div class="card-fb p-4 h-100">
+          <h6 class="fw-semibold mb-1">Storage Capacity</h6>
+          <div class="text-muted-2 mb-2" style="font-size:12.5px;">72 of 100 meal-units used today</div>
+          <div class="progress progress-cap"><div class="progress-bar" style="width:72%; background:var(--primary);"></div></div>
+          <h6 class="fw-semibold mt-4 mb-2">Track Volunteer</h6>
+          <div class="d-flex align-items-center gap-2">
+            <div class="avatar-circle" style="font-size:13px;">P</div>
+            <div>
+              <div style="font-size:13px; font-weight:600;">Priya Sharma — en route</div>
+              <div class="text-muted-2" style="font-size:11.5px;">Arriving in ~12 min</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <h6 class="fw-semibold mt-4 mb-3">Incoming Food</h6>
+    <div id="dashIncoming"></div>
+  `;
+        drawChart(
+          "chartRecipient",
+          NGO_LIST.slice(0, 4),
+          [30, 25, 20, 25],
+          ["#D87757", "#FF7A3D", "#2258C7", "#9A6B00"],
+          "doughnut",
+        );
+        document.getElementById("dashIncoming").innerHTML = incomingHtml(2);
+      }
+
+      function statCard(icon, color, value, label) {
+        return `<div class="col-6 col-lg-3"><div class="card-fb stat-card hoverable">
+    <div class="stat-icon" style="background:${color};"><i class="${icon}"></i></div>
+    <div class="stat-value">${value}</div><div class="stat-label">${label}</div>
+  </div></div>`;
+      }
+      function emptyState(icon, text) {
+        return `<div class="empty-state"><i class="${icon}"></i><div>${text}</div></div>`;
+      }
+
+      function drawChart(id, labels, data, color, type) {
+        const ctx = document.getElementById(id);
+        if (!ctx) return;
+        const isDoughnut = type === "doughnut";
+        new Chart(ctx, {
+          type: isDoughnut ? "doughnut" : "line",
+          data: {
+            labels,
+            datasets: [
+              {
+                label: "Meals",
+                data,
+                borderColor: isDoughnut ? undefined : color,
+                backgroundColor: isDoughnut ? color : "rgba(216,119,87,.12)",
+                tension: 0.4,
+                fill: true,
+                pointRadius: 3,
+                pointBackgroundColor: isDoughnut ? undefined : color,
+              },
+            ],
+          },
+          options: {
+            plugins: { legend: { display: isDoughnut } },
+            scales: isDoughnut
+              ? {}
+              : {
+                  y: { beginAtZero: true, grid: { color: "#EEF3EF" } },
+                  x: { grid: { display: false } },
+                },
+          },
+        });
+      }
+
+      /* ============================================================
+   DONOR: CREATE LISTING
+============================================================ */
+      function renderCreateListing() {
+        document.getElementById("pageBody").innerHTML = `
+    <h3 class="fw-display mb-1">Create Food Listing</h3>
+    <p class="text-muted-2 mb-4">Tell volunteers exactly what's available and when.</p>
+    <div class="row g-4">
+      <!-- Form column -->
+      <div class="col-12 col-xl-7">
+        <div class="card-fb p-4 h-100">
+          <div class="row g-3">
+            <div class="col-6">
+              <label class="small-label mb-2 d-block">Food Type</label>
+              <div class="btn-group w-100" role="group">
+                <input type="radio" class="btn-check" name="foodType" id="foodVeg" checked>
+                <label class="btn btn-fb-outline" for="foodVeg">🥦 Veg</label>
+                <input type="radio" class="btn-check" name="foodType" id="foodNonVeg">
+                <label class="btn btn-fb-outline" for="foodNonVeg">🍗 Non-Veg</label>
+              </div>
+            </div>
+            <div class="col-6">
+              <label class="small-label mb-2 d-block">Meal Type</label>
+              <select class="form-select" id="mealType" style="border-radius:12px;">
+                <option>Breakfast</option><option>Lunch</option><option>Dinner</option><option>Snacks</option>
+              </select>
+            </div>
+            <div class="col-6">
+              <label class="small-label mb-2 d-block">Quantity</label>
+              <input class="form-control" id="cQuantity" placeholder="e.g. 50 servings" style="border-radius:12px;">
+            </div>
+            <div class="col-6">
+              <label class="small-label mb-2 d-block">Freshness</label>
+              <select class="form-select" id="cFreshness" style="border-radius:12px;">
+                <option>Just Cooked</option><option>2 Hours Old</option><option>Packed Food</option>
+              </select>
+            </div>
+            <div class="col-6">
+              <label class="small-label mb-2 d-block">Pickup Time</label>
+              <input class="form-control" id="cPickupTime" placeholder="e.g. 6:00 PM - 8:00 PM" style="border-radius:12px;">
+            </div>
+            <div class="col-6">
+              <label class="small-label mb-2 d-block">Pickup Address</label>
+              <input class="form-control" id="cAddress" placeholder="e.g. MG Road" style="border-radius:12px;">
+            </div>
+            <div class="col-12">
+              <label class="small-label mb-2 d-block">Notes (optional)</label>
+              <textarea class="form-control" id="cNotes" rows="2" placeholder="Any handling instructions..." style="border-radius:12px;"></textarea>
+            </div>
+            <div class="col-12">
+              <label class="small-label mb-2 d-block">Upload Images</label>
+              <div class="upload-box" onclick="flashToast('fa-solid fa-image','Image attached (demo)')">
+                <i class="fa-solid fa-cloud-arrow-up fs-3 mb-2"></i>
+                <div style="font-size:13px;">Click to upload photos of the food</div>
+              </div>
+            </div>
+            <div class="col-12">
+              <button class="btn btn-fb w-100" onclick="submitListing()"><i class="fa-solid fa-paper-plane me-2"></i>Submit Listing</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Info cards column: side on XL, wraps to bottom on medium/small -->
+      <div class="col-12 col-xl-5">
+        <div class="row g-4">
+          <!-- Card 1: Your impact -->
+          <div class="col-12 col-md-6 col-xl-12">
+            <div class="card-fb hoverable p-4 h-100">
+              <div class="d-flex align-items-center gap-3 mb-3">
+                <div class="stat-icon mb-0" style="background:linear-gradient(135deg,var(--success),var(--success-deep));">
+                  <i class="fa-solid fa-seedling"></i>
+                </div>
+                <div>
+                  <div class="fw-bold" style="font-size:15px;">Your impact so far</div>
+                  <div class="text-muted-2" style="font-size:12px;">Every listing counts</div>
+                </div>
+              </div>
+              <div class="row text-center g-2">
+                <div class="col-4">
+                  <div class="fw-bold" style="font-size:22px;color:var(--primary-deep);">128</div>
+                  <div class="text-muted-2" style="font-size:11px;">Meals saved</div>
+                </div>
+                <div class="col-4">
+                  <div class="fw-bold" style="font-size:22px;color:var(--primary-deep);">12</div>
+                  <div class="text-muted-2" style="font-size:11px;">Donations</div>
+                </div>
+                <div class="col-4">
+                  <div class="fw-bold" style="font-size:22px;color:var(--primary-deep);">42kg</div>
+                  <div class="text-muted-2" style="font-size:11px;">CO₂ saved</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Card 2: Tips for a great listing -->
+          <div class="col-12 col-md-6 col-xl-12">
+            <div class="card-fb hoverable p-4 h-100">
+              <div class="d-flex align-items-center gap-3 mb-3">
+                <div class="stat-icon mb-0" style="background:linear-gradient(135deg,var(--orange),#e8621f);">
+                  <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div class="fw-bold" style="font-size:15px;">Tips for a great listing</div>
+              </div>
+              <ul class="list-unstyled mb-0" style="font-size:13px;">
+                <li class="d-flex gap-2 mb-2"><i class="fa-solid fa-circle-check mt-1" style="color:var(--success);"></i><span>Add clear photos so volunteers know what to expect.</span></li>
+                <li class="d-flex gap-2 mb-2"><i class="fa-solid fa-circle-check mt-1" style="color:var(--success);"></i><span>Give an accurate quantity and pickup window.</span></li>
+                <li class="d-flex gap-2"><i class="fa-solid fa-circle-check mt-1" style="color:var(--success);"></i><span>List fresh food early for faster pickups.</span></li>
+              </ul>
+            </div>
+          </div>
+
+          <!-- Card 3: Recipients waiting nearby -->
+          <div class="col-12 col-md-6 col-xl-12">
+            <div class="card-fb hoverable p-4 h-100">
+              <div class="d-flex align-items-center justify-content-between mb-3">
+                <div class="d-flex align-items-center gap-3">
+                  <div class="stat-icon mb-0" style="background:linear-gradient(135deg,var(--primary),var(--primary-deep));">
+                    <i class="fa-solid fa-hand-holding-heart"></i>
+                  </div>
+                  <div class="fw-bold" style="font-size:15px;">Waiting nearby</div>
+                </div>
+                <span class="badge-fb badge-pending">3 active</span>
+              </div>
+              <div class="leaderboard-row" style="border:none;padding:6px 0;">
+                <div class="avatar-circle" style="background:linear-gradient(135deg,var(--primary),var(--primary-deep));">H</div>
+                <div class="flex-fill"><div class="fw-semibold" style="font-size:13px;">Hope Community Kitchen</div><div class="text-muted-2" style="font-size:11px;">1.2 km away</div></div>
+              </div>
+              <div class="leaderboard-row" style="border:none;padding:6px 0;">
+                <div class="avatar-circle" style="background:linear-gradient(135deg,var(--success),var(--success-deep));">S</div>
+                <div class="flex-fill"><div class="fw-semibold" style="font-size:13px;">Sunrise Shelter</div><div class="text-muted-2" style="font-size:11px;">2.6 km away</div></div>
+              </div>
+              <div class="leaderboard-row" style="border:none;padding:6px 0;">
+                <div class="avatar-circle">A</div>
+                <div class="flex-fill"><div class="fw-semibold" style="font-size:13px;">Asha Foundation</div><div class="text-muted-2" style="font-size:11px;">3.4 km away</div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+        // Edit mode — prefill the form from the existing listing
+        if (editingListingId) {
+          const l = LISTINGS.find((x) => x.id === editingListingId);
+          if (l) {
+            document.querySelector("#pageBody h3").textContent =
+              "Edit Food Listing";
+            document.getElementById(
+              l.foodType === "Veg" ? "foodVeg" : "foodNonVeg",
+            ).checked = true;
+            document.getElementById("mealType").value = l.mealType;
+            document.getElementById("cQuantity").value = l.quantity;
+            document.getElementById("cFreshness").value = l.freshness;
+            document.getElementById("cPickupTime").value = l.pickupTime;
+            document.getElementById("cAddress").value = l.address;
+            document.getElementById("cNotes").value =
+              l.notes === "—" ? "" : l.notes;
+            const btn = document.querySelector("#pageBody button.btn-fb");
+            if (btn)
+              btn.innerHTML =
+                '<i class="fa-solid fa-floppy-disk me-2"></i>Update Listing';
+          }
+        }
+      }
+
+      function submitListing() {
+        const qty = document.getElementById("cQuantity").value.trim();
+        const time = document.getElementById("cPickupTime").value.trim();
+        const addr = document.getElementById("cAddress").value.trim();
+        if (!qty || !time || !addr) {
+          flashToast(
+            "fa-solid fa-triangle-exclamation",
+            "Please fill in quantity, pickup time and address",
+          );
+          return;
+        }
+
+        const foodType = document.getElementById("foodVeg").checked
+          ? "Veg"
+          : "Non-Veg";
+        const mealType = document.getElementById("mealType").value;
+        const freshness = document.getElementById("cFreshness").value;
+        const notes = document.getElementById("cNotes").value || "—";
+
+        // Edit mode — update the existing listing in place
+        if (editingListingId) {
+          LISTINGS = LISTINGS.map((l) =>
+            l.id === editingListingId
+              ? {
+                  ...l,
+                  foodType,
+                  mealType,
+                  quantity: qty,
+                  freshness,
+                  pickupTime: time,
+                  address: addr,
+                  notes,
+                }
+              : l,
+          );
+          editingListingId = null;
+          flashToast("fa-solid fa-circle-check", "Listing updated");
+          navTo("listings");
+          return;
+        }
+
+        listingCounter++;
+        LISTINGS.unshift({
+          id: listingCounter,
+          donor: currentUser.name,
+          foodType: document.getElementById("foodVeg").checked
+            ? "Veg"
+            : "Non-Veg",
+          mealType: document.getElementById("mealType").value,
+          quantity: qty,
+          freshness: document.getElementById("cFreshness").value,
+          pickupTime: time,
+          address: addr,
+          status: "pending",
+          volunteer: null,
+          recipient: null,
+          notes: document.getElementById("cNotes").value || "—",
+        });
+        flashToast(
+          "fa-solid fa-circle-check",
+          "Listing posted — nearby volunteers notified!",
+        );
+        pushNotification(
+          "fa-solid fa-circle-plus",
+          "Your listing (" + qty + ") is live and visible to volunteers",
+        );
+        navTo("listings");
+      }
+
+      /* ============================================================
+   DONOR: MY LISTINGS + DETAIL
+============================================================ */
+      function renderMyListings(activeTab) {
+        activeTab = activeTab || "all";
+        const mine = LISTINGS.filter((l) => l.donor === currentUser.name);
+        const tabs = ["all", "pending", "claimed", "delivered", "expired"];
+        document.getElementById("pageBody").innerHTML = `
+    <h3 class="fw-display mb-1">My Listings</h3>
+    <p class="text-muted-2 mb-3">Track every donation from post to certificate.</p>
+    <ul class="nav nav-pills mb-3 gap-2" id="listingTabs">
+      ${tabs.map((t) => `<li class="nav-item"><button class="btn ${activeTab === t ? "btn-fb" : "btn-fb-outline"} btn-sm" onclick="renderMyListings('${t}')">${t.charAt(0).toUpperCase() + t.slice(1)}</button></li>`).join("")}
+    </ul>
+    <div class="row g-3" id="listingsGrid"></div>
+  `;
+        const filtered = mine.filter(
+          (l) =>
+            activeTab === "all" ||
+            l.status === activeTab ||
+            (activeTab === "delivered" &&
+              (l.status === "delivered" || l.status === "confirmed")),
+        );
+        document.getElementById("listingsGrid").innerHTML = filtered.length
+          ? filtered
+              .map(
+                (l) => `
+    <div class="col-md-6 col-lg-4">
+      <div class="card-fb hoverable p-3" style="cursor:pointer;" onclick="openListingDetail(${l.id})">
+        <div class="d-flex justify-content-between align-items-start mb-2">
+          <span class="badge-fb bg-light" style="background:var(--primary-soft); color:var(--primary-deep);">${l.foodType}</span>
+          ${statusBadge(l.status)}
+        </div>
+        <div class="fw-semibold" style="font-size:14.5px;">${l.mealType} — ${l.quantity}</div>
+        <div class="text-muted-2 mt-1" style="font-size:12px;"><i class="fa-regular fa-clock me-1"></i>${l.pickupTime}</div>
+        <div class="text-muted-2" style="font-size:12px;"><i class="fa-solid fa-location-dot me-1"></i>${l.address}</div>
+      </div>
+    </div>
+  `,
+              )
+              .join("")
+          : `<div class="col-12">${emptyState("fa-solid fa-box-open", "No listings in this category yet")}</div>`;
+      }
+
+      function openListingDetail(id) {
+        const l = LISTINGS.find((x) => x.id === id);
+        const stepsOrder = [
+          "pending",
+          "claimed",
+          "pickedup",
+          "delivered",
+          "confirmed",
+        ];
+        const curIdx = stepsOrder.indexOf(
+          l.status === "expired" ? "pending" : l.status,
+        );
+        const labels = [
+          "Posted",
+          "Claimed",
+          "Picked Up",
+          "Delivered",
+          "Confirmed",
+        ];
+        const progressPct =
+          l.status === "expired" ? 0 : (curIdx / (stepsOrder.length - 1)) * 88;
+
+        document.getElementById("listingDetailBody").innerHTML = `
+    <div class="d-flex justify-content-between mb-3 flex-wrap gap-2">
+      <div>
+        <div class="fw-semibold" style="font-size:16px;">${l.foodType} · ${l.mealType} — ${l.quantity}</div>
+        <div class="text-muted-2" style="font-size:12.5px;">${l.pickupTime} · ${l.address}</div>
+      </div>
+      ${statusBadge(l.status)}
+    </div>
+
+    <div class="rescue-timeline mb-2">
+      <div class="tl-progress" style="width:${progressPct}%"></div>
+      ${labels
+        .map(
+          (lab, i) => `
+        <div class="tl-step ${i < curIdx ? "done" : i === curIdx ? "current" : ""}">
+          <div class="tl-dot"><i class="fa-solid ${["fa-clipboard-check", "fa-hand", "fa-box", "fa-truck", "fa-circle-check"][i]}"></i></div>
+          <div class="tl-step-label">${lab}</div>
+        </div>`,
+        )
+        .join("")}
+    </div>
+
+    <div class="row g-3 mt-2">
+      <div class="col-md-6">
+        <div class="card-fb p-3">
+          <div class="small-label mb-2">Volunteer</div>
+          ${
+            l.volunteer
+              ? `
+            <div class="d-flex align-items-center gap-2">
+              <div class="avatar-circle" style="font-size:13px;">${l.volunteer.charAt(0)}</div>
+              <div><div style="font-size:13.5px; font-weight:600;">${l.volunteer}</div><div class="text-muted-2" style="font-size:11.5px;">Verified volunteer</div></div>
+            </div>`
+              : `<div class="text-muted-2" style="font-size:13px;">Not yet claimed</div>`
+          }
+        </div>
+      </div>
+      <div class="col-md-6">
+        <div class="card-fb p-3">
+          <div class="small-label mb-2">Recipient</div>
+          ${l.recipient ? `<div style="font-size:13.5px; font-weight:600;">${l.recipient}</div>` : `<div class="text-muted-2" style="font-size:13px;">Not yet matched</div>`}
+        </div>
+      </div>
+    </div>
+    <div class="mt-3">
+      <div class="small-label mb-1">Notes</div>
+      <div style="font-size:13.5px;">${l.notes}</div>
+    </div>
+    ${donorListingActions(l)}
+  `;
+        new bootstrap.Modal(
+          document.getElementById("listingDetailModal"),
+        ).show();
+      }
+      // Donor-only edit/cancel actions, shown per listing status
+      function donorListingActions(l) {
+        if (
+          !currentUser ||
+          currentUser.role !== "donor" ||
+          l.donor !== currentUser.name
+        )
+          return "";
+        const canEdit = l.status === "pending";
+        const canCancel = l.status === "pending" || l.status === "claimed";
+        if (!canEdit && !canCancel) return "";
+        return `
+    <div class="d-flex gap-2 mt-4">
+      ${canEdit ? `<button class="btn btn-fb-outline flex-fill" onclick="editListing(${l.id})"><i class="fa-solid fa-pen me-1"></i>Edit Listing</button>` : ""}
+      ${canCancel ? `<button class="btn btn-fb-outline flex-fill text-danger" onclick="cancelListing(${l.id})"><i class="fa-solid fa-ban me-1"></i>Cancel Listing</button>` : ""}
+    </div>`;
+      }
+      function editListing(id) {
+        const modal = bootstrap.Modal.getInstance(
+          document.getElementById("listingDetailModal"),
+        );
+        if (modal) modal.hide();
+        editingListingId = id;
+        activeView = "create";
+        document
+          .querySelectorAll("#sidebarNav a")
+          .forEach((a) =>
+            a.classList.toggle("active", a.dataset.view === "create"),
+          );
+        renderCreateListing();
+      }
+      function cancelListing(id) {
+        const modal = bootstrap.Modal.getInstance(
+          document.getElementById("listingDetailModal"),
+        );
+        if (modal) modal.hide();
+        LISTINGS = LISTINGS.filter((l) => l.id !== id);
+        flashToast("fa-solid fa-ban", "Listing cancelled");
+        navTo("listings");
+      }
+
+      /* ============================================================
+   DONOR: CERTIFICATES
+============================================================ */
+      function renderCertificates() {
+        const done = LISTINGS.filter(
+          (l) => l.donor === currentUser.name && l.status === "confirmed",
+        );
+        document.getElementById("pageBody").innerHTML = `
+    <h3 class="fw-display mb-1">Certificates</h3>
+    <p class="text-muted-2 mb-4">CSR-ready proof for every completed donation.</p>
+    <div class="row g-3">
+      ${
+        done.length
+          ? done
+              .map(
+                (l) => `
+        <div class="col-md-6 col-lg-4">
+          <div class="card-fb p-3 text-center">
+            <i class="fa-solid fa-award mb-2" style="font-size:32px; color:var(--primary);"></i>
+            <div class="fw-semibold" style="font-size:14px;">${l.foodType} — ${l.quantity}</div>
+            <div class="text-muted-2 mb-3" style="font-size:11.5px;">Delivered to ${l.recipient}</div>
+            <button class="btn btn-fb-outline btn-sm w-100" onclick="openCertificate(${l.id})"><i class="fa-solid fa-eye me-1"></i>View & Download</button>
+          </div>
+        </div>`,
+              )
+              .join("")
+          : `<div class="col-12">${emptyState("fa-solid fa-award", "No certificates yet — complete a delivery to earn one")}</div>`
+      }
+    </div>
+    ${
+      done.length
+        ? `<button class="btn btn-fb-outline mt-4" onclick="flashToast('fa-solid fa-file-export','CSR donation report exported (demo)')"><i class="fa-solid fa-file-export me-2"></i>Export CSR Report (${done.length})</button>`
+        : ""
+    }
+  `;
+      }
+      function openCertificate(id) {
+        const l = LISTINGS.find((x) => x.id === id) || {
+          donor: currentUser.name,
+          foodType: "Veg",
+          quantity: "60 units",
+          recipient: "Hope Community Kitchen",
+          volunteer: "Arjun Mehta",
+        };
+        document.getElementById("certBody").innerHTML = `
+    <div class="d-flex justify-content-between py-2 border-bottom divider-soft"><span class="text-muted-2">Donor</span><b>${l.donor}</b></div>
+    <div class="d-flex justify-content-between py-2 border-bottom divider-soft"><span class="text-muted-2">Item</span><b>${l.foodType} — ${l.quantity}</b></div>
+    <div class="d-flex justify-content-between py-2 border-bottom divider-soft"><span class="text-muted-2">Delivered via</span><b>${l.volunteer}</b></div>
+    <div class="d-flex justify-content-between py-2 border-bottom divider-soft"><span class="text-muted-2">Received by</span><b>${l.recipient}</b></div>
+    <div class="d-flex justify-content-between py-2"><span class="text-muted-2">Date</span><b>${new Date().toLocaleDateString()}</b></div>
+  `;
+        new bootstrap.Modal(document.getElementById("certModal")).show();
+      }
+
+      /* ============================================================
+   VOLUNTEER: NEARBY LISTINGS
+============================================================ */
+      function openListingsHtml(limit) {
+        const open = LISTINGS.filter((l) => l.status === "pending").slice(
+          0,
+          limit || 99,
+        );
+        if (!open.length)
+          return emptyState(
+            "fa-solid fa-map",
+            "No open listings right now — check back soon",
+          );
+        return open
+          .map(
+            (l) => `
+    <div class="card-fb p-3 mb-3 d-flex flex-wrap justify-content-between align-items-center gap-2" style="display:flex;">
+      <div class="d-flex align-items-center gap-3">
+        <div class="stat-icon" style="background:var(--primary); width:42px; height:42px; margin:0;"><i class="fa-solid fa-utensils"></i></div>
+        <div>
+          <div class="fw-semibold" style="font-size:14px;">${l.donor}</div>
+          <div class="text-muted-2" style="font-size:12px;">${l.foodType} · ${l.mealType} · ${l.quantity} · ${l.freshness}</div>
+          <div class="text-muted-2" style="font-size:11.5px;"><i class="fa-solid fa-location-dot me-1"></i>${l.address} · ${(1 + Math.random() * 4).toFixed(1)} km · ~${5 + Math.floor(Math.random() * 15)} min</div>
+        </div>
+      </div>
+      <button class="btn btn-fb btn-sm" onclick="claimListing(${l.id})"><i class="fa-solid fa-hand me-1"></i>Claim</button>
+    </div>
+  `,
+          )
+          .join("");
+      }
+      // Count + list of receivers active near the volunteer's location
+      function activeReceiversBanner() {
+        const active = NEARBY_RECEIVERS.filter((r) => r.active);
+        const radius = 5;
+        return `
+    <div class="card-fb p-3 mt-3">
+      <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+        <div class="d-flex align-items-center gap-3">
+          <div class="stat-icon mb-0" style="background:linear-gradient(135deg,var(--success),var(--success-deep)); width:46px; height:46px;">
+            <i class="fa-solid fa-people-group"></i>
+          </div>
+          <div>
+            <div class="fw-bold" style="font-size:16px;">
+              <span style="color:var(--success-deep);">${active.length}</span> receivers active nearby
+            </div>
+            <div class="text-muted-2" style="font-size:12px;">Within ${radius} km of your location · updated live</div>
+          </div>
+        </div>
+        <span class="badge-fb badge-confirmed" style="display:inline-flex; align-items:center; gap:6px;">
+          <span style="width:8px; height:8px; border-radius:50%; background:var(--success); animation:pulse 1.4s infinite;"></span>Live
+        </span>
+      </div>
+      <div class="d-flex flex-wrap gap-2 mt-3">
+        ${active
+          .sort((a, b) => a.dist - b.dist)
+          .map(
+            (r) => `
+          <span class="badge-fb" style="background:var(--success-soft); color:var(--success-deep); display:inline-flex; align-items:center; gap:6px;">
+            <i class="fa-solid fa-location-dot"></i>${r.name} · ${r.dist} km
+          </span>`,
+          )
+          .join("")}
+      </div>
+    </div>`;
+      }
+      let nearbyView = "card";
+      function renderNearby() {
+        document.getElementById("pageBody").innerHTML = `
+    <div class="d-flex justify-content-between align-items-center mb-1 flex-wrap gap-2">
+      <div>
+        <h3 class="fw-display mb-1">Nearby Listings</h3>
+        <p class="text-muted-2 mb-0">Sorted by distance — claim what you can deliver.</p>
+      </div>
+      <div class="btn-group">
+        <button class="btn btn-sm ${nearbyView === "card" ? "btn-fb" : "btn-fb-outline"}" onclick="setNearbyView('card')"><i class="fa-solid fa-list me-1"></i>Card View</button>
+        <button class="btn btn-sm ${nearbyView === "map" ? "btn-fb" : "btn-fb-outline"}" onclick="setNearbyView('map')"><i class="fa-solid fa-map me-1"></i>Map View</button>
+      </div>
+    </div>
+    ${activeReceiversBanner()}
+    <div class="mt-3" id="nearbyGrid" ${nearbyView === "map" ? 'style="display:none;"' : ""}>
+      ${openListingsHtml()}
+      <div class="card-fb p-4 mt-3">
+        <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+          <div>
+            <div class="fw-bold" style="font-size:15px;"><i class="fa-solid fa-route me-2" style="color:var(--primary);"></i>Your route</div>
+            <div class="text-muted-2" style="font-size:12px;">Exact position and path from pickup to drop-off</div>
+          </div>
+          <button class="btn btn-fb-outline btn-sm" onclick="setNearbyView('map')"><i class="fa-solid fa-expand me-1"></i>Full map</button>
+        </div>
+        ${locationMapHtml()}
+      </div>
+    </div>
+    <div class="mt-3" id="nearbyMap" ${nearbyView === "card" ? 'style="display:none;"' : ""}>${locationMapHtml()}</div>
+  `;
+      }
+      function setNearbyView(view) {
+        nearbyView = view;
+        renderNearby();
+      }
+      function locationMapHtml(opts) {
+        opts = opts || {};
+        const pickup = opts.pickup || "Riverside Banquet Hall";
+        const drop = opts.drop || "Hope Community Kitchen";
+        const distance = opts.distance || "4.5 km total";
+        const eta = opts.eta || "Est. ~18 min by bike";
+        const height = opts.height || 440;
+        // Demo coordinates around Ahmedabad: A = volunteer, B = pickup, C = drop-off
+        const me = opts.me || "23.0225,72.5714";
+        const pick = opts.pickCoord || "23.0395,72.5660";
+        const dropc = opts.dropCoord || "23.0100,72.5960";
+        const src = `https://maps.google.com/maps?saddr=${me}&daddr=${pick}+to:${dropc}&z=13&output=embed`;
+        const openLink = `https://www.google.com/maps/dir/${me}/${pick}/${dropc}`;
+        return `
+    <div class="fb-map" style="height:${height}px;">
+      <iframe
+        class="fb-map-frame"
+        src="${src}"
+        title="Route from your location to pickup and drop-off"
+        allowfullscreen
+        loading="lazy"
+        referrerpolicy="no-referrer-when-downgrade"
+      ></iframe>
+
+      <!-- ETA / distance card -->
+      <div class="map-eta">
+        <div class="fw-bold" style="font-size:13px;"><i class="fa-solid fa-route me-1" style="color:var(--primary);"></i>${distance}</div>
+        <div class="text-muted-2" style="font-size:11px;">${eta}</div>
+      </div>
+
+      <!-- Legend + open-in-maps -->
+      <div class="map-legend">
+        <div class="legend-row"><span class="legend-dot" style="background:#2258c7;"></span><b>A</b>&nbsp;· You (start)</div>
+        <div class="legend-row"><span class="legend-dot" style="background:var(--orange);"></span><b>B</b>&nbsp;· Pickup · ${pickup}</div>
+        <div class="legend-row"><span class="legend-dot" style="background:var(--success);"></span><b>C</b>&nbsp;· Drop · ${drop}</div>
+        <a class="btn btn-fb btn-sm w-100 mt-2" href="${openLink}" target="_blank" rel="noopener" style="font-size:11.5px; padding:6px 10px;"><i class="fa-solid fa-up-right-from-square me-1"></i>Open in Google Maps</a>
+      </div>
+    </div>
+  `;
+      }
+      function claimListing(id) {
+        LISTINGS = LISTINGS.map((l) =>
+          l.id === id
+            ? { ...l, status: "claimed", volunteer: currentUser.name }
+            : l,
+        );
+        flashToast(
+          "fa-solid fa-circle-check",
+          "Listing claimed — starting navigation",
+        );
+        pushNotification(
+          "fa-solid fa-truck",
+          currentUser.name + " claimed a listing near you",
+        );
+        renderNavigation(id);
+      }
+
+      /* ============================================================
+   VOLUNTEER: TURN-BY-TURN NAVIGATION
+============================================================ */
+      function renderNavigation(id) {
+        const l = LISTINGS.find((x) => x.id === id);
+        if (!l) {
+          navTo("nearby");
+          return;
+        }
+        const steps = [
+          {
+            icon: "fa-location-arrow",
+            main: "Head north on your street",
+            sub: "400 m",
+            active: true,
+          },
+          {
+            icon: "fa-arrow-turn-up",
+            main: "Turn right onto MG Road",
+            sub: "1.2 km",
+          },
+          {
+            icon: "fa-arrow-turn-up fa-flip-horizontal",
+            main: "Turn left onto Riverside Ave",
+            sub: "900 m",
+          },
+          {
+            icon: "fa-box-open",
+            main: `Arrive at pickup — ${l.donor}`,
+            sub: l.address,
+            pickup: true,
+          },
+          {
+            icon: "fa-hand-holding-heart",
+            main: `Deliver to ${l.recipient || "Hope Community Kitchen"}`,
+            sub: "Drop-off point",
+            drop: true,
+          },
+        ];
+        document.getElementById("pageBody").innerHTML = `
+    <div class="d-flex align-items-center gap-2 mb-1">
+      <button class="btn-icon" onclick="navTo('nearby')"><i class="fa-solid fa-arrow-left"></i></button>
+      <div>
+        <h3 class="fw-display mb-0">Start Navigation</h3>
+        <p class="text-muted-2 mb-0" style="font-size:13px;">Follow the route to ${l.donor}</p>
+      </div>
+    </div>
+
+    <div class="row g-4 mt-1">
+      <!-- Map -->
+      <div class="col-12 col-lg-8">
+        <div class="card-fb p-3 h-100">
+          ${locationMapHtml({ pickup: l.donor, drop: l.recipient || "Hope Community Kitchen", height: 460 })}
+        </div>
+      </div>
+
+      <!-- Directions panel -->
+      <div class="col-12 col-lg-4">
+        <div class="card-fb p-4 h-100 d-flex flex-column">
+          <!-- Next step banner -->
+          <div class="p-3 mb-3" style="background:var(--primary-soft); border-radius:16px;">
+            <div class="d-flex align-items-center gap-3">
+              <i class="fa-solid fa-location-arrow" style="font-size:24px; color:var(--primary-deep);"></i>
+              <div>
+                <div class="fw-bold" style="font-size:15px;">Head north on your street</div>
+                <div class="text-muted-2" style="font-size:12px;">Then turn right in 400 m</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="d-flex justify-content-between text-center mb-3">
+            <div><div class="fw-bold" style="font-size:18px; color:var(--primary-deep);">4.5 km</div><div class="text-muted-2" style="font-size:11px;">Distance</div></div>
+            <div><div class="fw-bold" style="font-size:18px; color:var(--primary-deep);">~18 min</div><div class="text-muted-2" style="font-size:11px;">ETA</div></div>
+            <div><div class="fw-bold" style="font-size:18px; color:var(--primary-deep);">2 stops</div><div class="text-muted-2" style="font-size:11px;">Pickup + Drop</div></div>
+          </div>
+
+          <div class="small-label mb-2">Turn-by-turn</div>
+          <div class="flex-fill" style="overflow-y:auto;">
+            ${steps
+              .map(
+                (s) => `
+              <div class="d-flex align-items-start gap-3 py-2" style="border-bottom:1px solid var(--line);">
+                <div class="stat-icon mb-0" style="width:38px; height:38px; font-size:14px; background:${s.pickup ? "var(--orange)" : s.drop ? "var(--success)" : s.active ? "var(--primary)" : "var(--muted)"};">
+                  <i class="fa-solid ${s.icon}"></i>
+                </div>
+                <div class="pt-1">
+                  <div class="fw-semibold" style="font-size:13.5px;">${s.main}</div>
+                  <div class="text-muted-2" style="font-size:12px;">${s.sub}</div>
+                </div>
+              </div>`,
+              )
+              .join("")}
+          </div>
+
+          <button class="btn btn-fb w-100 mt-3" onclick="openPickup(${l.id})"><i class="fa-solid fa-flag-checkered me-2"></i>I've arrived at pickup</button>
+          <button class="btn btn-fb-outline w-100 mt-2" onclick="navTo('deliveries')"><i class="fa-solid fa-truck me-2"></i>Go to My Deliveries</button>
+        </div>
+      </div>
+    </div>
+  `;
+      }
+
+      /* ============================================================
+   VOLUNTEER: MY DELIVERIES (pickup + delivery flow)
+============================================================ */
+      function renderDeliveries() {
+        const mine = LISTINGS.filter(
+          (l) =>
+            l.volunteer === currentUser.name &&
+            (l.status === "claimed" || l.status === "pickedup"),
+        );
+        document.getElementById("pageBody").innerHTML = `
+    <h3 class="fw-display mb-1">My Deliveries</h3>
+    <p class="text-muted-2 mb-4">Complete pickup and delivery to keep the chain moving.</p>
+    <div class="row g-3">
+      ${
+        mine.length
+          ? mine
+              .map(
+                (l) => `
+        <div class="col-md-6">
+          <div class="card-fb p-3">
+            <div class="d-flex justify-content-between align-items-start mb-2">
+              <div class="fw-semibold" style="font-size:14.5px;">${l.donor}</div>
+              ${statusBadge(l.status)}
+            </div>
+            <div class="text-muted-2 mb-3" style="font-size:12.5px;">${l.foodType} · ${l.quantity} · ${l.address}</div>
+            ${
+              l.status === "claimed"
+                ? `<button class="btn btn-orange btn-sm w-100" onclick="openPickup(${l.id})"><i class="fa-solid fa-hand me-1"></i>Start Pickup</button>`
+                : `<button class="btn btn-fb btn-sm w-100" onclick="openDelivery(${l.id})"><i class="fa-solid fa-truck me-1"></i>Go to Delivery</button>`
+            }
+          </div>
+        </div>`,
+              )
+              .join("")
+          : `<div class="col-12">${emptyState("fa-solid fa-truck", "No active deliveries — claim a listing to get started")}</div>`
+      }
+    </div>
+  `;
+      }
+
+      function openPickup(id) {
+        const l = LISTINGS.find((x) => x.id === id);
+        document.getElementById("pickupBody").innerHTML = `
+    <div class="d-flex align-items-center gap-3 mb-3">
+      <div class="avatar-circle">${l.donor.charAt(0)}</div>
+      <div>
+        <div class="fw-semibold">${l.donor}</div>
+        <div class="text-muted-2" style="font-size:12.5px;">${l.address}</div>
+      </div>
+      <button class="btn-icon ms-auto" onclick="flashToast('fa-solid fa-phone','Calling donor... (demo)')"><i class="fa-solid fa-phone"></i></button>
+    </div>
+    <div class="card-fb p-3 mb-3" style="background:var(--cream); border:none;">
+      <div style="font-size:13px;"><b>${l.foodType} · ${l.mealType}</b> — ${l.quantity}</div>
+      <div class="text-muted-2" style="font-size:12px;">Freshness: ${l.freshness} · ${l.pickupTime}</div>
+    </div>
+    <div class="upload-box mb-3" onclick="flashToast('fa-solid fa-camera','Pickup photo attached (demo)')">
+      <i class="fa-solid fa-camera fs-4 mb-2"></i>
+      <div style="font-size:13px;">Upload pickup confirmation photo</div>
+    </div>
+    <button class="btn btn-fb w-100" onclick="confirmPickup(${l.id})"><i class="fa-solid fa-check me-2"></i>Confirm Pickup</button>
+  `;
+        new bootstrap.Modal(document.getElementById("pickupModal")).show();
+      }
+      function confirmPickup(id) {
+        const recipient = NGO_LIST[Math.floor(Math.random() * NGO_LIST.length)];
+        LISTINGS = LISTINGS.map((l) =>
+          l.id === id ? { ...l, status: "pickedup", recipient } : l,
+        );
+        bootstrap.Modal.getInstance(
+          document.getElementById("pickupModal"),
+        ).hide();
+        flashToast(
+          "fa-solid fa-circle-check",
+          "Pickup confirmed — matched with " + recipient,
+        );
+        pushNotification(
+          "fa-solid fa-box",
+          "Pickup completed — en route to " + recipient,
+        );
+        renderDeliveries();
+      }
+
+      function openDelivery(id) {
+        const l = LISTINGS.find((x) => x.id === id);
+        document.getElementById("deliveryBody").innerHTML = `
+    <div class="d-flex align-items-center gap-3 mb-3">
+      <div class="avatar-circle" style="background:linear-gradient(135deg,var(--primary-bright),var(--primary-deep));">${(l.recipient || "N").charAt(0)}</div>
+      <div>
+        <div class="fw-semibold">${l.recipient || "Nearest Recipient"}</div>
+        <div class="text-muted-2" style="font-size:12.5px;">Recipient contact available after pickup</div>
+      </div>
+      <button class="btn-icon ms-auto" onclick="flashToast('fa-solid fa-diamond-turn-right','Directions opened (demo)')"><i class="fa-solid fa-diamond-turn-right"></i></button>
+    </div>
+    <div class="map-placeholder mb-3" style="height:130px;">
+      <i class="fa-solid fa-route fs-4 mb-1"></i>
+      <div style="font-size:12.5px;">Directions preview (demo placeholder)</div>
+    </div>
+    <div class="upload-box mb-3" onclick="flashToast('fa-solid fa-camera','Delivery photo attached (demo)')">
+      <i class="fa-solid fa-camera fs-4 mb-2"></i>
+      <div style="font-size:13px;">Upload delivery confirmation photo</div>
+    </div>
+    <button class="btn btn-fb w-100" onclick="confirmDeliveryDone(${l.id})"><i class="fa-solid fa-check me-2"></i>Confirm Delivery</button>
+  `;
+        new bootstrap.Modal(document.getElementById("deliveryModal")).show();
+      }
+      function confirmDeliveryDone(id) {
+        LISTINGS = LISTINGS.map((l) =>
+          l.id === id ? { ...l, status: "delivered" } : l,
+        );
+        bootstrap.Modal.getInstance(
+          document.getElementById("deliveryModal"),
+        ).hide();
+        flashToast(
+          "fa-solid fa-circle-check",
+          "Delivery marked complete — awaiting recipient confirmation",
+        );
+        pushNotification(
+          "fa-solid fa-truck-ramp-box",
+          "Delivery completed — awaiting recipient confirmation",
+        );
+        renderDeliveries();
+      }
+
+      /* ============================================================
+   VOLUNTEER: HISTORY + LEADERBOARD
+============================================================ */
+      function renderHistory() {
+        if (currentUser.role === "volunteer") {
+          const done = LISTINGS.filter(
+            (l) =>
+              l.volunteer === currentUser.name &&
+              (l.status === "delivered" || l.status === "confirmed"),
+          );
+          document.getElementById("pageBody").innerHTML = `
+      <h3 class="fw-display mb-1">Delivery History</h3>
+      <p class="text-muted-2 mb-4">Every completed delivery, all in one place.</p>
+      <div class="card-fb p-3">
+        ${
+          done.length
+            ? done
+                .map(
+                  (l) => `
+          <div class="d-flex justify-content-between align-items-center py-2 border-bottom divider-soft">
+            <div><div style="font-size:13.5px; font-weight:600;">${l.donor} → ${l.recipient}</div>
+            <div class="text-muted-2" style="font-size:11.5px;">${l.foodType} · ${l.quantity}</div></div>
+            ${statusBadge(l.status)}
+          </div>`,
+                )
+                .join("")
+            : emptyState(
+                "fa-solid fa-clock-rotate-left",
+                "No completed deliveries yet",
+              )
+        }
+      </div>`;
+        } else {
+          const done = LISTINGS.filter(
+            (l) => l.recipient === currentUser.name && l.status === "confirmed",
+          );
+          document.getElementById("pageBody").innerHTML = `
+      <h3 class="fw-display mb-1">Distribution History</h3>
+      <p class="text-muted-2 mb-4">Meals your organization has received and distributed.</p>
+      <div class="card-fb p-3">
+        ${
+          done.length
+            ? done
+                .map(
+                  (l) => `
+          <div class="d-flex justify-content-between align-items-center py-2 border-bottom divider-soft">
+            <div><div style="font-size:13.5px; font-weight:600;">${l.foodType} — ${l.quantity}</div>
+            <div class="text-muted-2" style="font-size:11.5px;">From ${l.donor} · via ${l.volunteer}</div></div>
+            ${statusBadge(l.status)}
+          </div>`,
+                )
+                .join("")
+            : emptyState(
+                "fa-solid fa-clock-rotate-left",
+                "No distribution history yet",
+              )
+        }
+      </div>
+      ${
+        currentUser.recipientType === "Individual"
+          ? ""
+          : `<button class="btn btn-fb-outline mt-3" onclick="flashToast('fa-solid fa-file-export','Delivery log exported (demo)')"><i class="fa-solid fa-file-export me-2"></i>Export Delivery Log</button>`
+      }`;
+        }
+      }
+
+      function renderLeaderboard() {
+        const rows = VOLUNTEER_NAMES.map((n, i) => ({
+          name: n,
+          points: 720 - i * 95,
+          deliveries: 34 - i * 5,
+        })).sort((a, b) => b.points - a.points);
+        document.getElementById("pageBody").innerHTML = `
+    <h3 class="fw-display mb-1">Leaderboard</h3>
+    <p class="text-muted-2 mb-4">Top volunteers this month.</p>
+    <div class="card-fb p-3">
+      ${rows
+        .map(
+          (r, i) => `
+        <div class="leaderboard-row">
+          <div class="rank-pill">#${i + 1}</div>
+          <div class="avatar-circle" style="font-size:13px;">${r.name.charAt(0)}</div>
+          <div class="flex-fill">
+            <div style="font-size:13.5px; font-weight:600;">${r.name}${r.name === currentUser.name ? ' <span class="text-muted-2">(you)</span>' : ""}</div>
+            <div class="text-muted-2" style="font-size:11.5px;">${r.deliveries} deliveries</div>
+          </div>
+          <div class="fw-bold" style="color:var(--primary-deep);">${r.points} pts</div>
+        </div>`,
+        )
+        .join("")}
+    </div>
+  `;
+      }
+
+      /* ============================================================
+   RECIPIENT: INCOMING FOOD (accept/reject) + REPORTS
+============================================================ */
+      function incomingHtml(limit) {
+        const incoming = LISTINGS.filter((l) => l.status === "pickedup").slice(
+          0,
+          limit || 99,
+        );
+        if (!incoming.length)
+          return emptyState(
+            "fa-solid fa-box-open",
+            "Nothing incoming right now",
+          );
+        return incoming
+          .map(
+            (l) => `
+    <div class="card-fb p-3 mb-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
+      <div class="d-flex align-items-center gap-3">
+        <div class="stat-icon" style="background:var(--orange); width:42px; height:42px; margin:0;"><i class="fa-solid fa-truck"></i></div>
+        <div>
+          <div class="fw-semibold" style="font-size:14px;">${l.foodType} · ${l.mealType} — ${l.quantity}</div>
+          <div class="text-muted-2" style="font-size:12px;">From ${l.donor} · via ${l.volunteer}</div>
+        </div>
+      </div>
+      <div class="d-flex gap-2">
+        <button class="btn btn-fb-outline btn-sm" onclick="rejectIncoming(${l.id})"><i class="fa-solid fa-xmark me-1"></i>Reject</button>
+        <button class="btn btn-fb btn-sm" onclick="acceptIncoming(${l.id})"><i class="fa-solid fa-check me-1"></i>Accept</button>
+      </div>
+    </div>
+  `,
+          )
+          .join("");
+      }
+      // Reflects the recipient's availability — food offers only arrive while active
+      function recipientStatusBanner() {
+        if (isActive) {
+          const offers = LISTINGS.filter((l) => l.status === "pending").length;
+          return `
+    <div class="card-fb p-3 mb-4" style="background:var(--success-soft); border:none;">
+      <div class="d-flex align-items-center gap-3">
+        <div class="stat-icon mb-0" style="background:linear-gradient(135deg,var(--success),var(--success-deep)); width:46px; height:46px;">
+          <i class="fa-solid fa-bell"></i>
+        </div>
+        <div class="flex-fill">
+          <div class="fw-bold" style="font-size:15px; color:var(--success-deep);">You're accepting food intake</div>
+          <div class="text-muted-2" style="font-size:12px;">You'll be notified when donations are available nearby${offers ? ` · ${offers} available now` : ""}</div>
+        </div>
+        <span class="badge-fb badge-confirmed" style="display:inline-flex; align-items:center; gap:6px;">
+          <span style="width:8px; height:8px; border-radius:50%; background:var(--success); animation:pulse 1.4s infinite;"></span>Live
+        </span>
+      </div>
+    </div>`;
+        }
+        return `
+    <div class="card-fb p-4 mb-4 text-center" style="border:1.5px dashed var(--line);">
+      <i class="fa-solid fa-moon mb-2" style="font-size:30px; color:var(--muted);"></i>
+      <div class="fw-bold" style="font-size:15px;">You're offline</div>
+      <div class="text-muted-2 mb-3" style="font-size:13px;">No one is available for food intake around the clock. Turn on <b>Accepting</b> to get notified when surplus food is available near you.</div>
+      <button class="btn btn-fb" onclick="toggleActive()"><i class="fa-solid fa-power-off me-2"></i>Go Active &amp; Get Notified</button>
+    </div>`;
+      }
+      function renderIncoming() {
+        document.getElementById("pageBody").innerHTML = `
+    <h3 class="fw-display mb-1">Incoming Food</h3>
+    <p class="text-muted-2 mb-4">Accept to confirm you'll receive it, or reject to free it up for another NGO.</p>
+    ${recipientStatusBanner()}
+    <div id="incomingList">${isActive ? incomingHtml() : ""}</div>
+
+    <h6 class="fw-semibold mt-4 mb-3">Awaiting Your Confirmation</h6>
+    <div id="deliveredList"></div>
+  `;
+        const delivered = LISTINGS.filter(
+          (l) => l.status === "delivered" && l.recipient === currentUser.name,
+        );
+        document.getElementById("deliveredList").innerHTML = delivered.length
+          ? delivered
+              .map(
+                (l) => `
+    <div class="card-fb p-3 mb-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
+      <div>
+        <div class="fw-semibold" style="font-size:14px;">${l.foodType} — ${l.quantity}</div>
+        <div class="text-muted-2" style="font-size:12px;">Delivered by ${l.volunteer}</div>
+      </div>
+      <button class="btn btn-fb btn-sm" onclick="confirmReceipt(${l.id})"><i class="fa-solid fa-check-double me-1"></i>Confirm Receipt</button>
+    </div>`,
+              )
+              .join("")
+          : emptyState(
+              "fa-solid fa-clipboard-check",
+              "Nothing awaiting confirmation",
+            );
+      }
+      function acceptIncoming(id) {
+        LISTINGS = LISTINGS.map((l) =>
+          l.id === id ? { ...l, recipient: currentUser.name } : l,
+        );
+        flashToast(
+          "fa-solid fa-circle-check",
+          "Accepted — volunteer notified you're expecting this delivery",
+        );
+        navTo("incoming");
+      }
+      function rejectIncoming(id) {
+        const alt = NGO_LIST.filter((n) => n !== currentUser.name);
+        LISTINGS = LISTINGS.map((l) =>
+          l.id === id
+            ? { ...l, recipient: alt[Math.floor(Math.random() * alt.length)] }
+            : l,
+        );
+        flashToast(
+          "fa-solid fa-rotate",
+          "Reassigned to another nearby organization",
+        );
+        navTo("incoming");
+      }
+      function confirmReceipt(id) {
+        LISTINGS = LISTINGS.map((l) =>
+          l.id === id ? { ...l, status: "confirmed" } : l,
+        );
+        const l = LISTINGS.find((x) => x.id === id);
+        flashToast(
+          "fa-solid fa-circle-check",
+          "Delivery confirmed — donor certificate issued",
+        );
+        pushNotification(
+          "fa-solid fa-award",
+          "Certificate generated for " + l.donor,
+        );
+        navTo("incoming");
+      }
+
+      /* ============================================================
+   RECIPIENT: TRACK DELIVERY (live)
+============================================================ */
+      let trackTimer = null;
+      function renderTrackDelivery() {
+        const tracking = LISTINGS.filter(
+          (l) =>
+            l.recipient === currentUser.name &&
+            (l.status === "pickedup" || l.status === "delivered"),
+        );
+        document.getElementById("pageBody").innerHTML = `
+    <h3 class="fw-display mb-1">Track Delivery</h3>
+    <p class="text-muted-2 mb-4">Follow your incoming food in real time — from pickup to your doorstep.</p>
+    ${
+      tracking.length
+        ? tracking.map(trackCardHtml).join("")
+        : emptyState(
+            "fa-solid fa-location-crosshairs",
+            "No active deliveries to track right now — check Incoming Food",
+          )
+    }
+  `;
+        // live ETA ticker for en-route deliveries
+        if (trackTimer) clearInterval(trackTimer);
+        const enRoute = tracking.filter((l) => l.status === "pickedup");
+        if (enRoute.length) {
+          trackTimer = setInterval(() => {
+            let alive = false;
+            enRoute.forEach((l) => {
+              const el = document.getElementById("eta-" + l.id);
+              if (!el) return;
+              alive = true;
+              let m = parseInt(el.dataset.min);
+              if (m > 1) {
+                m--;
+                el.dataset.min = m;
+                el.textContent = m + " min away";
+              } else {
+                el.textContent = "Arriving now";
+              }
+            });
+            if (!alive) clearInterval(trackTimer);
+          }, 2000);
+        }
+      }
+      function trackCardHtml(l) {
+        const stepsOrder = [
+          "pending",
+          "claimed",
+          "pickedup",
+          "delivered",
+          "confirmed",
+        ];
+        const curIdx = stepsOrder.indexOf(l.status);
+        const labels = [
+          "Posted",
+          "Claimed",
+          "Picked Up",
+          "Delivered",
+          "Confirmed",
+        ];
+        const progressPct = (curIdx / (stepsOrder.length - 1)) * 88;
+        const etaMin = 6 + (l.id % 12);
+        const isEnRoute = l.status === "pickedup";
+        return `
+    <div class="card-fb p-4 mb-4">
+      <div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
+        <div>
+          <div class="fw-bold" style="font-size:16px;">${l.foodType} · ${l.mealType} — ${l.quantity}</div>
+          <div class="text-muted-2" style="font-size:12.5px;">From ${l.donor}</div>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+          ${
+            isEnRoute
+              ? `<span class="badge-fb" style="background:var(--success-soft); color:var(--success-deep); display:inline-flex; align-items:center; gap:6px;"><span style="width:8px; height:8px; border-radius:50%; background:var(--success); animation:pulse 1.4s infinite;"></span>Live</span>`
+              : ""
+          }
+          ${statusBadge(l.status)}
+        </div>
+      </div>
+
+      <!-- Status timeline -->
+      <div class="rescue-timeline mb-3">
+        <div class="tl-progress" style="width:${progressPct}%"></div>
+        ${labels
+          .map(
+            (lab, i) => `
+          <div class="tl-step ${i < curIdx ? "done" : i === curIdx ? "current" : ""}">
+            <div class="tl-dot"><i class="fa-solid ${["fa-clipboard-check", "fa-hand", "fa-box", "fa-truck", "fa-circle-check"][i]}"></i></div>
+            <div class="tl-step-label">${lab}</div>
+          </div>`,
+          )
+          .join("")}
+      </div>
+
+      <div class="row g-4 mt-1">
+        <!-- Live map -->
+        <div class="col-12 col-lg-7">
+          ${locationMapHtml({
+            pickup: l.donor,
+            drop: currentUser.name,
+            height: 340,
+            distance: (2 + (l.id % 5)).toFixed(1) + " km away",
+            eta: isEnRoute ? "Volunteer en route" : "Delivered",
+          })}
+        </div>
+
+        <!-- Details -->
+        <div class="col-12 col-lg-5">
+          <div class="card-fb p-3 mb-3" style="background:var(--primary-soft); border:none;">
+            <div class="small-label mb-1">${isEnRoute ? "Estimated arrival" : "Status"}</div>
+            <div class="fw-bold" style="font-size:22px; color:var(--primary-deep);" id="eta-${l.id}" data-min="${etaMin}">${isEnRoute ? etaMin + " min away" : "Delivered — awaiting confirmation"}</div>
+          </div>
+
+          <div class="small-label mb-2">Volunteer</div>
+          <div class="d-flex align-items-center gap-2 mb-3">
+            <div class="avatar-circle" style="font-size:14px;">${(l.volunteer || "V").charAt(0)}</div>
+            <div class="flex-fill">
+              <div style="font-size:13.5px; font-weight:600;">${l.volunteer || "Assigned volunteer"}</div>
+              <div class="text-muted-2" style="font-size:11.5px;">Verified volunteer</div>
+            </div>
+            <button class="btn-icon" onclick="flashToast('fa-solid fa-phone','Calling volunteer (demo)')"><i class="fa-solid fa-phone"></i></button>
+          </div>
+
+          <div class="small-label mb-1">Pickup from</div>
+          <div style="font-size:13.5px; margin-bottom:12px;"><i class="fa-solid fa-location-dot me-1" style="color:var(--orange);"></i>${l.donor} · ${l.address}</div>
+
+          ${
+            l.status === "delivered"
+              ? `<button class="btn btn-fb w-100" onclick="confirmReceipt(${l.id})"><i class="fa-solid fa-check-double me-2"></i>Confirm Receipt</button>`
+              : `<button class="btn btn-fb-outline w-100" onclick="flashToast('fa-solid fa-bell','You will be alerted when it arrives')"><i class="fa-solid fa-bell me-2"></i>Notify me on arrival</button>`
+          }
+        </div>
+      </div>
+    </div>
+  `;
+      }
+
+      function renderReports() {
+        document.getElementById("pageBody").innerHTML = `
+    <h3 class="fw-display mb-1">Reports</h3>
+    <p class="text-muted-2 mb-4">Statistics for your own records and funders.</p>
+    <div class="row g-3 mb-4">
+      ${statCard("fa-solid fa-bowl-food", "var(--primary)", "1,240", "Meals This Month")}
+      ${statCard("fa-solid fa-truck", "var(--orange)", "46", "Deliveries Received")}
+      ${statCard("fa-solid fa-building", "#2258C7", "12", "Partner Donors")}
+    </div>
+    <div class="card-fb p-4">
+      <h6 class="fw-semibold mb-3">Meals Received Over Time</h6>
+      <canvas id="chartReports" height="140"></canvas>
+    </div>
+    <button class="btn btn-fb-outline mt-3" onclick="flashToast('fa-solid fa-file-export','Report exported (demo)')"><i class="fa-solid fa-file-export me-2"></i>Export Report</button>
+  `;
+        drawChart(
+          "chartReports",
+          ["Jan", "Feb", "Mar", "Apr", "May", "Jun"],
+          [220, 260, 300, 280, 340, 310],
+          "var(--primary)",
+        );
+      }
+
+      /* ============================================================
+   ADMIN PORTAL
+============================================================ */
+      function renderAdminDashboard() {
+        const pending = ACCOUNTS.filter((a) => a.status === "pending").length;
+        const openDisputes = DISPUTES.filter((d) => d.status === "open").length;
+        document.getElementById("pageBody").innerHTML = `
+    <h3 class="fw-display mb-1">Admin Dashboard</h3>
+    <p class="text-muted-2 mb-4">Platform-wide oversight — verification, live status trail, and impact.</p>
+    <div class="row g-3 mb-4">
+      ${statCard("fa-solid fa-list-check", "var(--primary)", LISTINGS.length, "Total Listings")}
+      ${statCard("fa-solid fa-user-shield", "var(--orange)", pending, "Pending Verifications")}
+      ${statCard("fa-solid fa-triangle-exclamation", "#c7442a", openDisputes, "Open Disputes")}
+      ${statCard("fa-solid fa-bowl-food", "var(--success)", "1,240", "Meals Rescued")}
+    </div>
+    <div class="row g-4">
+      <div class="col-12 col-lg-7">
+        <div class="card-fb p-4 h-100">
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <h6 class="fw-semibold mb-0">Listings by Status</h6>
+            <i class="fa-solid fa-chart-column" style="color:var(--primary);"></i>
+          </div>
+          <div style="height:240px;"><canvas id="chartAdminStatus"></canvas></div>
+        </div>
+      </div>
+      <div class="col-12 col-lg-5">
+        <div class="card-fb p-4 h-100">
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <h6 class="fw-semibold mb-0">Accounts</h6>
+            <i class="fa-solid fa-users" style="color:var(--primary);"></i>
+          </div>
+          <div style="height:240px;"><canvas id="chartAdminAccounts"></canvas></div>
+        </div>
+      </div>
+    </div>
+  `;
+        const statuses = [
+          "pending",
+          "claimed",
+          "pickedup",
+          "delivered",
+          "confirmed",
+          "expired",
+        ];
+        const counts = statuses.map(
+          (s) => LISTINGS.filter((l) => l.status === s).length,
+        );
+        const tickColor = darkMode ? "#a69a8e" : "#7a6f65";
+        const gridColor = darkMode
+          ? "rgba(255,255,255,.08)"
+          : "rgba(122,111,101,.12)";
+        const barCtx = document.getElementById("chartAdminStatus");
+        if (barCtx) {
+          new Chart(barCtx, {
+            type: "bar",
+            data: {
+              labels: [
+                "Posted",
+                "Claimed",
+                "Picked Up",
+                "Delivered",
+                "Confirmed",
+                "Expired",
+              ],
+              datasets: [
+                {
+                  data: counts,
+                  backgroundColor: "rgba(216,119,87,.85)",
+                  hoverBackgroundColor: "#b65c3f",
+                  borderRadius: 8,
+                  maxBarThickness: 40,
+                },
+              ],
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: { legend: { display: false } },
+              scales: {
+                y: {
+                  beginAtZero: true,
+                  ticks: { color: tickColor, precision: 0 },
+                  grid: { color: gridColor },
+                },
+                x: { ticks: { color: tickColor }, grid: { display: false } },
+              },
+            },
+          });
+        }
+        const pieCtx = document.getElementById("chartAdminAccounts");
+        if (pieCtx) {
+          new Chart(pieCtx, {
+            type: "doughnut",
+            data: {
+              labels: ["Verified", "Pending", "Suspended"],
+              datasets: [
+                {
+                  data: [
+                    ACCOUNTS.filter((a) => a.status === "verified").length,
+                    ACCOUNTS.filter((a) => a.status === "pending").length,
+                    ACCOUNTS.filter((a) => a.status === "suspended").length,
+                  ],
+                  backgroundColor: ["#1e9e5c", "#ff7a3d", "#c7442a"],
+                  borderColor: darkMode ? "#241e19" : "#fff",
+                  borderWidth: 3,
+                },
+              ],
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              cutout: "62%",
+              plugins: {
+                legend: {
+                  position: "bottom",
+                  labels: {
+                    color: tickColor,
+                    usePointStyle: true,
+                    padding: 14,
+                  },
+                },
+              },
+            },
+          });
+        }
+      }
+
+      let adminListingFilter = "all";
+      function renderAdminListings() {
+        const filtered =
+          adminListingFilter === "all"
+            ? LISTINGS
+            : LISTINGS.filter((l) => l.status === adminListingFilter);
+        const filters = [
+          "all",
+          "pending",
+          "claimed",
+          "pickedup",
+          "delivered",
+          "confirmed",
+          "expired",
+        ];
+        document.getElementById("pageBody").innerHTML = `
+    <h3 class="fw-display mb-1">All Listings</h3>
+    <p class="text-muted-2 mb-4">Full live status trail across every listing on the platform.</p>
+    <div class="d-flex gap-2 flex-wrap mb-3">
+      ${filters
+        .map(
+          (f) =>
+            `<button class="btn btn-sm ${adminListingFilter === f ? "btn-fb" : "btn-fb-outline"}" onclick="setAdminFilter('${f}')">${f === "all" ? "All" : statusBadgeLabel(f)}</button>`,
+        )
+        .join("")}
+    </div>
+    <div class="card-fb p-0" style="overflow:hidden;">
+      <div class="table-responsive">
+        <table class="table align-middle mb-0">
+          <thead style="background:var(--primary-soft);">
+            <tr style="font-size:12px;">
+              <th class="small-label px-3 py-3">Donor</th>
+              <th class="small-label py-3">Food</th>
+              <th class="small-label py-3">Volunteer</th>
+              <th class="small-label py-3">Recipient</th>
+              <th class="small-label py-3">Status</th>
+              <th class="small-label py-3 text-end px-3">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${
+              filtered.length
+                ? filtered
+                    .map(
+                      (l) => `
+              <tr style="font-size:13px; border-color:var(--line);">
+                <td class="px-3 fw-semibold">${l.donor}</td>
+                <td class="text-muted-2">${l.foodType} · ${l.quantity}</td>
+                <td class="text-muted-2">${l.volunteer || "—"}</td>
+                <td class="text-muted-2">${l.recipient || "—"}</td>
+                <td>${statusBadge(l.status)}</td>
+                <td class="text-end px-3"><button class="btn btn-fb-outline btn-sm" onclick="openListingDetail(${l.id})"><i class="fa-solid fa-eye me-1"></i>Trail</button></td>
+              </tr>`,
+                    )
+                    .join("")
+                : `<tr><td colspan="6">${emptyState("fa-solid fa-inbox", "No listings match this filter")}</td></tr>`
+            }
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+      }
+      function setAdminFilter(f) {
+        adminListingFilter = f;
+        renderAdminListings();
+      }
+      function statusBadgeLabel(s) {
+        return (
+          {
+            pending: "Posted",
+            claimed: "Claimed",
+            pickedup: "Picked Up",
+            delivered: "Delivered",
+            confirmed: "Confirmed",
+            expired: "Expired",
+          }[s] || s
+        );
+      }
+
+      function renderVerifications() {
+        const order = { pending: 0, verified: 1, suspended: 2 };
+        const sorted = [...ACCOUNTS].sort(
+          (a, b) => order[a.status] - order[b.status],
+        );
+        document.getElementById("pageBody").innerHTML = `
+    <h3 class="fw-display mb-1">Verifications</h3>
+    <p class="text-muted-2 mb-4">Approve or suspend volunteers and organizations. Individuals self-register — no verification needed.</p>
+    <div class="row g-3">
+      ${sorted
+        .map(
+          (a) => `
+      <div class="col-12 col-md-6 col-xl-4">
+        <div class="card-fb p-3 h-100">
+          <div class="d-flex align-items-center gap-2 mb-2">
+            <div class="avatar-circle" style="background:linear-gradient(135deg,${a.type === "Organization" ? "var(--success),var(--success-deep)" : "var(--primary),var(--primary-deep)"});">${a.name.charAt(0)}</div>
+            <div class="flex-fill">
+              <div class="fw-semibold" style="font-size:13.5px;">${a.name}</div>
+              <div class="text-muted-2" style="font-size:11.5px;"><i class="fa-solid ${a.type === "Organization" ? "fa-building" : "fa-user"} me-1"></i>${a.type} · ${a.city}</div>
+            </div>
+            ${verifyBadge(a.status)}
+          </div>
+          <div class="text-muted-2 mb-3" style="font-size:11.5px;"><i class="fa-solid fa-clock me-1"></i>Joined ${a.joined}</div>
+          <div class="d-flex gap-2">
+            ${
+              a.status === "pending"
+                ? `<button class="btn btn-fb btn-sm flex-fill" onclick="verifyAccount(${a.id})"><i class="fa-solid fa-check me-1"></i>Verify</button>
+                   <button class="btn btn-fb-outline btn-sm flex-fill text-danger" onclick="suspendAccount(${a.id})">Reject</button>`
+                : a.status === "verified"
+                  ? `<button class="btn btn-fb-outline btn-sm flex-fill text-danger" onclick="suspendAccount(${a.id})"><i class="fa-solid fa-ban me-1"></i>Suspend</button>`
+                  : `<button class="btn btn-fb btn-sm flex-fill" onclick="verifyAccount(${a.id})"><i class="fa-solid fa-rotate-left me-1"></i>Reinstate</button>`
+            }
+          </div>
+        </div>
+      </div>`,
+        )
+        .join("")}
+    </div>
+  `;
+      }
+      function verifyBadge(status) {
+        const map = {
+          verified: `<span class="badge-fb badge-confirmed">Verified</span>`,
+          pending: `<span class="badge-fb badge-pending">Pending</span>`,
+          suspended: `<span class="badge-fb badge-expired">Suspended</span>`,
+        };
+        return map[status] || "";
+      }
+      function verifyAccount(id) {
+        ACCOUNTS = ACCOUNTS.map((a) =>
+          a.id === id ? { ...a, status: "verified" } : a,
+        );
+        const a = ACCOUNTS.find((x) => x.id === id);
+        flashToast("fa-solid fa-user-check", a.name + " verified");
+        pushNotification("fa-solid fa-user-check", a.name + " was verified");
+        renderVerifications();
+      }
+      function suspendAccount(id) {
+        ACCOUNTS = ACCOUNTS.map((a) =>
+          a.id === id ? { ...a, status: "suspended" } : a,
+        );
+        const a = ACCOUNTS.find((x) => x.id === id);
+        flashToast("fa-solid fa-ban", a.name + " suspended");
+        renderVerifications();
+      }
+
+      function renderDisputes() {
+        const open = DISPUTES.filter((d) => d.status === "open");
+        const resolved = DISPUTES.filter((d) => d.status === "resolved");
+        const prColor = {
+          high: "#c7442a",
+          medium: "var(--orange)",
+          low: "var(--muted)",
+        };
+        document.getElementById("pageBody").innerHTML = `
+    <h3 class="fw-display mb-1">Dispute Resolution</h3>
+    <p class="text-muted-2 mb-4">Investigate and resolve issues raised on deliveries.</p>
+    <h6 class="fw-semibold mb-3">Open <span class="badge-fb badge-pending ms-1">${open.length}</span></h6>
+    <div class="row g-3 mb-4">
+      ${
+        open.length
+          ? open
+              .map(
+                (d) => `
+      <div class="col-12 col-lg-6">
+        <div class="card-fb p-3 h-100" style="border-left:4px solid ${prColor[d.priority]};">
+          <div class="d-flex justify-content-between align-items-start mb-2">
+            <div class="fw-semibold" style="font-size:14px;">${d.listing}</div>
+            <span class="badge-fb" style="background:${prColor[d.priority]}22; color:${prColor[d.priority]};">${d.priority} priority</span>
+          </div>
+          <div class="text-muted-2 mb-2" style="font-size:12px;"><i class="fa-solid fa-user me-1"></i>Raised by ${d.raisedBy}</div>
+          <div style="font-size:13px;" class="mb-3">"${d.reason}"</div>
+          <div class="d-flex gap-2">
+            <button class="btn btn-fb btn-sm flex-fill" onclick="resolveDispute(${d.id})"><i class="fa-solid fa-check me-1"></i>Mark Resolved</button>
+            <button class="btn btn-fb-outline btn-sm" onclick="flashToast('fa-solid fa-envelope','Contacted both parties (demo)')"><i class="fa-solid fa-envelope"></i></button>
+          </div>
+        </div>
+      </div>`,
+              )
+              .join("")
+          : `<div class="col-12">${emptyState("fa-solid fa-circle-check", "No open disputes — all clear")}</div>`
+      }
+    </div>
+    ${
+      resolved.length
+        ? `<h6 class="fw-semibold mb-3">Resolved</h6>
+    <div class="row g-3">
+      ${resolved
+        .map(
+          (d) => `
+      <div class="col-12 col-lg-6">
+        <div class="card-fb p-3 h-100" style="opacity:.7;">
+          <div class="d-flex justify-content-between align-items-start">
+            <div class="fw-semibold" style="font-size:14px;">${d.listing}</div>
+            <span class="badge-fb badge-confirmed">Resolved</span>
+          </div>
+          <div class="text-muted-2 mt-1" style="font-size:12px;">${d.reason}</div>
+        </div>
+      </div>`,
+        )
+        .join("")}
+    </div>`
+        : ""
+    }
+  `;
+      }
+      function resolveDispute(id) {
+        DISPUTES = DISPUTES.map((d) =>
+          d.id === id ? { ...d, status: "resolved" } : d,
+        );
+        flashToast("fa-solid fa-circle-check", "Dispute marked resolved");
+        renderDisputes();
+      }
+
+      function renderAdminReports() {
+        document.getElementById("pageBody").innerHTML = `
+    <h3 class="fw-display mb-1">Platform Reports</h3>
+    <p class="text-muted-2 mb-4">CSR-ready, platform-wide impact for funders and partners.</p>
+    <div class="row g-3 mb-4">
+      ${statCard("fa-solid fa-bowl-food", "var(--primary)", "8,420", "Meals Rescued")}
+      ${statCard("fa-solid fa-users", "var(--orange)", "156", "Active Volunteers")}
+      ${statCard("fa-solid fa-building", "#2258C7", "38", "Partner Orgs")}
+      ${statCard("fa-solid fa-leaf", "var(--success)", "2.1t", "CO₂ Avoided")}
+    </div>
+    <div class="card-fb p-4">
+      <h6 class="fw-semibold mb-3">Meals Rescued Over Time</h6>
+      <canvas id="chartAdminReports" height="120"></canvas>
+    </div>
+    <button class="btn btn-fb-outline mt-3" onclick="flashToast('fa-solid fa-file-export','Platform CSR report exported (demo)')"><i class="fa-solid fa-file-export me-2"></i>Export CSR Report</button>
+  `;
+        drawChart(
+          "chartAdminReports",
+          ["Jan", "Feb", "Mar", "Apr", "May", "Jun"],
+          [820, 1040, 1180, 1360, 1520, 1500],
+          "var(--primary)",
+        );
+      }
+
+      /* ============================================================
+   PROFILE + SETTINGS (shared)
+============================================================ */
+      function renderProfile() {
+        document.getElementById("pageBody").innerHTML = `
+    <h3 class="fw-display mb-4">Profile</h3>
+    <div class="card-fb p-4" style="max-width:560px;">
+      <div class="d-flex align-items-center gap-3 mb-4">
+        <div class="avatar-circle" style="width:64px; height:64px; font-size:22px;">${currentUser.name.charAt(0)}</div>
+        <div>
+          <div class="fw-semibold" style="font-size:17px;">${currentUser.name}</div>
+          <div class="text-muted-2" style="font-size:13px;">${currentUser.role.charAt(0).toUpperCase() + currentUser.role.slice(1)} · ${currentUser.city || "—"}</div>
+        </div>
+      </div>
+      <div class="row g-3">
+        <div class="col-6"><label class="small-label mb-2 d-block">Mobile</label><input class="form-control" value="+91 ${currentUser.mobile}" disabled style="border-radius:12px;"></div>
+        <div class="col-6"><label class="small-label mb-2 d-block">City</label><input class="form-control" value="${currentUser.city || ""}" style="border-radius:12px;"></div>
+        <div class="col-12"><label class="small-label mb-2 d-block">Full Name</label><input class="form-control" value="${currentUser.name}" style="border-radius:12px;"></div>
+        ${
+          currentUser.role === "recipient" && currentUser.recipientType
+            ? `<div class="col-6"><label class="small-label mb-2 d-block">Recipient Type</label><input class="form-control" value="${currentUser.recipientType}" disabled style="border-radius:12px;"></div>
+        <div class="col-6"><label class="small-label mb-2 d-block">${currentUser.recipientType === "Organization" ? "Serving Capacity" : "Household Size"}</label><input class="form-control" value="${currentUser.capacity || "—"}" style="border-radius:12px;"></div>`
+            : ""
+        }
+      </div>
+      <button class="btn btn-fb mt-4" onclick="flashToast('fa-solid fa-circle-check','Profile updated')"><i class="fa-solid fa-floppy-disk me-2"></i>Save Changes</button>
+    </div>
+  `;
+      }
+      function renderSettings() {
+        document.getElementById("pageBody").innerHTML = `
+    <h3 class="fw-display mb-4">Settings</h3>
+    <div class="card-fb p-4" style="max-width:560px;">
+      <div class="d-flex justify-content-between align-items-center py-2 border-bottom divider-soft">
+        <div><div style="font-size:14px; font-weight:600;">Dark Mode</div><div class="text-muted-2" style="font-size:12px;">Switch between light and dark theme</div></div>
+        <div class="form-check form-switch"><input class="form-check-input" type="checkbox" ${darkMode ? "checked" : ""} onclick="toggleDark()" style="width:42px; height:22px;"></div>
+      </div>
+      <div class="d-flex justify-content-between align-items-center py-3 border-bottom divider-soft">
+        <div><div style="font-size:14px; font-weight:600;">Push Notifications</div><div class="text-muted-2" style="font-size:12px;">New listings, claims, confirmations</div></div>
+        <div class="form-check form-switch"><input class="form-check-input" type="checkbox" checked style="width:42px; height:22px;"></div>
+      </div>
+      <div class="d-flex justify-content-between align-items-center py-3">
+        <div><div style="font-size:14px; font-weight:600;">Email Updates</div><div class="text-muted-2" style="font-size:12px;">Weekly summary of your activity</div></div>
+        <div class="form-check form-switch"><input class="form-check-input" type="checkbox" style="width:42px; height:22px;"></div>
+      </div>
+    </div>
+  `;
+      }
+    </script>
+  </body>
+</html>

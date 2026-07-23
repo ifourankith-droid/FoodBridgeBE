@@ -1,0 +1,69 @@
+@baseUrl = https://localhost:5001
+
+### Health check
+GET {{baseUrl}}/api/health
+
+
+### --- Auth ---
+
+### Send OTP
+POST {{baseUrl}}/api/auth/send-otp
+Content-Type: application/json
+
+{
+  "mobile": "9876543210"
+}
+
+
+### Verify OTP (read the code from console/logs — MockSmsProvider logs it)
+POST {{baseUrl}}/api/auth/verify-otp
+Content-Type: application/json
+
+{
+  "mobile": "9876543210",
+  "code": "123456"
+}
+
+
+### Register (sessionToken = the `token` from verify-otp when isNewUser was true)
+POST {{baseUrl}}/api/auth/register
+Content-Type: application/json
+
+{
+  "sessionToken": "PASTE_SESSION_TOKEN_HERE",
+  "role": "Volunteer",
+  "name": "Test Volunteer",
+  "city": "Ahmedabad",
+  "address": "Satellite, Ahmedabad",
+  "latitude": 23.03,
+  "longitude": 72.55,
+  "recipientType": null,
+  "capacityMeals": null
+}
+
+
+### Register as Recipient (recipientType + capacityMeals required)
+POST {{baseUrl}}/api/auth/register
+Content-Type: application/json
+
+{
+  "sessionToken": "PASTE_SESSION_TOKEN_HERE",
+  "role": "Recipient",
+  "name": "Hope Community Kitchen",
+  "city": "Ahmedabad",
+  "address": "Paldi, Ahmedabad",
+  "latitude": 23.01,
+  "longitude": 72.56,
+  "recipientType": "Organization",
+  "capacityMeals": 200
+}
+
+
+### Me (requires a JWT — from verify-otp existing-user, or register)
+GET {{baseUrl}}/api/auth/me
+Authorization: Bearer PASTE_JWT_HERE
+
+
+### Logout
+POST {{baseUrl}}/api/auth/logout
+Authorization: Bearer PASTE_JWT_HERE
