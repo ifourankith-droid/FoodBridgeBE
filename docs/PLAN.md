@@ -53,12 +53,13 @@ Phases run one at a time, in order. A phase is not "done" until its acceptance c
 - [x] Bonus verified: Admin can `GET` any profile; Donor gets 403 on `PATCH .../availability` (role-restricted even for their own account); bad file extension → 422.
 
 ## Phase 4 — Listings: Donor side (6 endpoints)
-- [ ] Create/list/detail/update/cancel listing, image upload.
-- [ ] `ListingStateMachine` single source of truth for transitions.
-- [ ] **Add `DietType` (Veg/Non-Veg) and `MealType` (Breakfast/Lunch/Dinner/Snacks) tinyint columns to `Listings`** (new migration, on top of the freeform `FoodType` text column) — decided after comparing against the prototype; see `docs/ARCHITECTURE.md` decisions log.
+- [x] Create/list/detail/update/cancel listing, image upload.
+- [x] `ListingStateMachine` single source of truth for transitions.
+- [x] **Add `DietType` (Veg/Non-Veg) and `MealType` (Breakfast/Lunch/Dinner/Snacks) tinyint columns to `Listings`** (new migration, on top of the freeform `FoodType` text column) — decided after comparing against the prototype; see `docs/ARCHITECTURE.md` decisions log.
 
 **Acceptance criteria**
-- [ ] Editing a Claimed listing returns 422. Detail endpoint shows the timeline. Contracts updated.
+- [x] Editing a Claimed listing returns 422 (verified live: `PUT` on a seeded Claimed listing → 422 `"Only pending listings can be edited."`). Detail endpoint shows the timeline. Contracts updated.
+- [x] Bonus verified live: create → list (own listings, paginated) → detail → update (Pending only) → image upload (servable URL) → cancel → re-cancel blocked 422 via `ListingStateMachine` → cross-donor `GET` blocked 403 → non-Donor role blocked 403 by the `DonorOnly` policy.
 
 ## Phase 5 — Listings: Volunteer side + geo (4 endpoints)
 - [ ] `GET /api/listings/nearby`, claim (optimistic concurrency), confirm-pickup, confirm-delivery.

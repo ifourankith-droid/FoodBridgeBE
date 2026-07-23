@@ -27,4 +27,15 @@ public abstract class BaseController : ControllerBase
 
         return UnprocessableEntity(ApiResponse<object?>.Fail(result.Message, result.Errors, TraceId));
     }
+
+    protected ActionResult<PagedResponse<T>> HandlePagedResult<T>(Result<PagedResult<T>> result)
+    {
+        if (result.IsSuccess)
+        {
+            var data = result.Data!;
+            return Ok(PagedResponse<T>.Create(data.Items, data.Page, data.PageSize, data.TotalCount, result.Message, TraceId));
+        }
+
+        return UnprocessableEntity(PagedResponse<T>.Fail(result.Message, result.Errors, TraceId));
+    }
 }

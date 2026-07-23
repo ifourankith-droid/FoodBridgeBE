@@ -8,6 +8,7 @@ using FoodBridge.Api.Middleware;
 using FoodBridge.Application.Abstractions;
 using FoodBridge.Application.Auth;
 using FoodBridge.Application.Common;
+using FoodBridge.Application.Listings;
 using FoodBridge.Application.Users;
 using FoodBridge.Domain.Enums;
 using FoodBridge.Infrastructure.Auth;
@@ -104,6 +105,9 @@ try
     builder.Services.AddHttpContextAccessor();
     builder.Services.AddScoped<ICurrentUser, CurrentUserAccessor>();
     builder.Services.AddScoped<IUserService, UserService>();
+
+    builder.Services.AddScoped<IListingRepository, ListingRepository>();
+    builder.Services.AddScoped<IListingService, ListingService>();
 
     builder.Services.AddSingleton<IFileStorage>(_ => new LocalFileStorage(uploadsPath, "/uploads"));
 

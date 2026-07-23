@@ -12,6 +12,8 @@ See `docs/ARCHITECTURE.md` § Data dictionary → Enum value tables (Role, Accou
 
 ## Table of contents
 - [Auth](#auth) — send-otp, verify-otp, register, logout, me
+- [Users](#users) — get/update profile, availability, avatar
+- [Listings — Donor](#listings--donor) — create, list, detail, update, cancel, image upload
 
 ## Auth
 All 5 endpoints route under `/api/auth`. None require a role policy; `logout` and `me` require any authenticated JWT (`[Authorize]`).
@@ -169,6 +171,89 @@ Success (200):
 The returned URL is directly servable (static files under `wwwroot/uploads`). Errors: 422 — `"Avatar must be 2MB or smaller."` / `"Avatar must be a JPG or PNG image."`; 400 if no file attached.
 
 ## Listings — Donor
+All 6 endpoints route under `/api/listings` and require `[Authorize(Policy = "DonorOnly")]` — any non-Donor role gets 403 on every route. Beyond the role check, ownership (a donor can only see/edit their own listings) is enforced in `ListingService` via `ICurrentUser`, not the policy. `FreshnessTag`, `DietType`, and `MealType` are passed/returned as their enum **string name** — see `docs/ARCHITECTURE.md` § Data dictionary → Enum value tables.
+
+### POST /api/listings
+Creates a new listing, starting in the `Pending` status. `dietType`/`mealType` are optional (nullable); `freshnessTag` is required.
+
+Request:
+```json
+{
+  "title": "Surplus Wedding Catering",
+  "foodType": "Mixed Veg Meals",
+  "dietType": "Veg",
+  "mealType": "Dinner",
+  "quantityMeals": 80,
+  "freshnessTag": "JustCooked",
+  "preparedAtUtc": "2026-07-23T08:00:00Z",
+  "pickupDeadlineUtc": "2026-07-23T14:00:00Z",
+  "pickupAddress": "C.G. Road, Navrangpura",
+  "latitude": 23.0338,
+  "longitude": 72.5623
+}
+```
+Success (200): a `ListingResponse` (see `GET /api/listings/{id}` below) with `status: "Pending"`, empty `images`, and a single `timeline` entry (`fromStatus: null` → `toStatus: "Pending"`).
+
+Errors: 400 — validation (bad enum name, non-future deadline before `preparedAtUtc`, out-of-range lat/lng, etc.); 403 — caller isn't a Donor.
+
+### GET /api/listings
+Lists the caller's **own** listings, paginated, optionally filtered by status.
+
+Query params: `page` (default 1), `pageSize` (default 20, max 100 — clamped server-side), `status` (optional; one of the `Listings.Status` enum names).
+
+Success (200) — `PagedResponse<ListingSummaryResponse>`:
+```json
+{
+  "page": 1, "pageSize": 20, "totalCount": 5, "totalPages": 1,
+  "success": true, "message": "Success", "traceId": "...",
+  "data": [
+    { "id": "...", "title": "Surplus Wedding Catering", "foodType": "Mixed Veg Meals", "dietType": "Veg", "mealType": "Dinner", "quantityMeals": 80, "freshnessTag": "JustCooked", "pickupDeadlineUtc": "...", "status": "Pending", "createdAtUtc": "..." }
+  ]
+}
+```
+422 — unrecognized `status` value (e.g. `?status=Bogus`).
+
+### GET /api/listings/{id}
+Full detail, including images and the timeline. Owning donor only.
+
+Success (200):
+```json
+{
+  "success": true, "message": "Success", "traceId": "...",
+  "data": {
+    "id": "...", "donorId": "...", "title": "Surplus Wedding Catering", "foodType": "Mixed Veg Meals",
+    "dietType": "Veg", "mealType": "Dinner", "quantityMeals": 80, "freshnessTag": "JustCooked",
+    "preparedAtUtc": "2026-07-23T08:00:00Z", "pickupDeadlineUtc": "2026-07-23T14:00:00Z",
+    "pickupAddress": "C.G. Road, Navrangpura", "latitude": 23.0338, "longitude": 72.5623,
+    "status": "Pending", "volunteerId": null, "recipientId": null,
+    "createdAtUtc": "...", "updatedAtUtc": "...",
+    "images": [ { "id": "...", "imageUrl": "/uploads/....jpg", "createdAtUtc": "..." } ],
+    "timeline": [ { "fromStatus": null, "toStatus": "Pending", "actorUserId": "...", "note": "Listing created.", "photoUrl": null, "createdAtUtc": "..." } ]
+  }
+}
+```
+404 — no such listing. 403 — belongs to a different donor.
+
+### PUT /api/listings/{id}
+Updates a listing. Owning donor only, and **only while `Status == Pending`**.
+
+Request: same shape as `POST /api/listings` (all fields required except `dietType`/`mealType`/`preparedAtUtc`).
+
+Success (200): same shape as `GET /api/listings/{id}`. Errors: 403 — not the owner; **422 — `"Only pending listings can be edited."`** once `Claimed` or later (verified live against a seeded `Claimed` listing).
+
+### POST /api/listings/{id}/cancel
+Cancels a listing (`Pending → Cancelled`) via `ListingStateMachine`. Owning donor only.
+
+No request body. Success (200): same shape as `GET /api/listings/{id}` with `status: "Cancelled"` and a new timeline entry. 422 — any status other than `Pending` (e.g. cancelling an already-`Cancelled` listing → `"Cannot transition listing from 'Cancelled' to 'Cancelled'."`).
+
+### POST /api/listings/{id}/images
+Uploads a photo of the food (JPG/PNG, max 5MB). Owning donor only, and only while `Status == Pending`. `multipart/form-data` with a `file` field.
+
+Success (200):
+```json
+{ "success": true, "message": "Image uploaded successfully.", "data": { "imageId": "...", "imageUrl": "/uploads/....jpg" }, "errors": null, "traceId": "..." }
+```
+The URL is directly servable (static files under `wwwroot/uploads`, same as avatars). Errors: 422 — `"Image must be 5MB or smaller."` / `"Image must be a JPG or PNG file."` / `"Images can only be added to pending listings."`; 400 — no file attached.
 
 ## Listings — Volunteer
 

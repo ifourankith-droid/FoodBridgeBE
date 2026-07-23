@@ -113,3 +113,79 @@ Content-Type: image/jpeg
 
 < ./avatar.jpg
 --FoodBridgeBoundary--
+
+
+### --- Listings (Donor) ---
+@listingId = PASTE_LISTING_ID_HERE
+
+### Create a listing (DonorOnly)
+POST {{baseUrl}}/api/listings
+Authorization: Bearer PASTE_DONOR_JWT_HERE
+Content-Type: application/json
+
+{
+  "title": "Surplus Wedding Catering",
+  "foodType": "Mixed Veg Meals",
+  "dietType": "Veg",
+  "mealType": "Dinner",
+  "quantityMeals": 80,
+  "freshnessTag": "JustCooked",
+  "preparedAtUtc": "2026-07-23T08:00:00Z",
+  "pickupDeadlineUtc": "2026-07-23T14:00:00Z",
+  "pickupAddress": "C.G. Road, Navrangpura",
+  "latitude": 23.0338,
+  "longitude": 72.5623
+}
+
+
+### List my listings (paginated, optional status filter)
+GET {{baseUrl}}/api/listings?page=1&pageSize=20
+Authorization: Bearer PASTE_DONOR_JWT_HERE
+
+
+### List my listings filtered by status
+GET {{baseUrl}}/api/listings?page=1&pageSize=20&status=Pending
+Authorization: Bearer PASTE_DONOR_JWT_HERE
+
+
+### Get listing detail (images + timeline)
+GET {{baseUrl}}/api/listings/{{listingId}}
+Authorization: Bearer PASTE_DONOR_JWT_HERE
+
+
+### Update a listing (owner only; only while Pending — 422 otherwise)
+PUT {{baseUrl}}/api/listings/{{listingId}}
+Authorization: Bearer PASTE_DONOR_JWT_HERE
+Content-Type: application/json
+
+{
+  "title": "Surplus Wedding Catering (updated)",
+  "foodType": "Mixed Veg Meals",
+  "dietType": "Veg",
+  "mealType": "Dinner",
+  "quantityMeals": 90,
+  "freshnessTag": "FewHoursOld",
+  "preparedAtUtc": "2026-07-23T08:00:00Z",
+  "pickupDeadlineUtc": "2026-07-23T15:00:00Z",
+  "pickupAddress": "C.G. Road, Navrangpura",
+  "latitude": 23.0338,
+  "longitude": 72.5623
+}
+
+
+### Cancel a listing (owner only; only while Pending — 422 otherwise)
+POST {{baseUrl}}/api/listings/{{listingId}}/cancel
+Authorization: Bearer PASTE_DONOR_JWT_HERE
+
+
+### Upload a listing image (owner only; JPG/PNG, max 5MB; only while Pending)
+POST {{baseUrl}}/api/listings/{{listingId}}/images
+Authorization: Bearer PASTE_DONOR_JWT_HERE
+Content-Type: multipart/form-data; boundary=FoodBridgeBoundary
+
+--FoodBridgeBoundary
+Content-Disposition: form-data; name="file"; filename="food.jpg"
+Content-Type: image/jpeg
+
+< ./food.jpg
+--FoodBridgeBoundary--

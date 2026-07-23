@@ -24,4 +24,13 @@ public class PagedResponse<T> : ApiResponse<IReadOnlyList<T>>
         TotalCount = totalCount,
         TotalPages = pageSize == 0 ? 0 : (int)Math.Ceiling(totalCount / (double)pageSize),
     };
+
+    public static new PagedResponse<T> Fail(string message, IReadOnlyList<string>? errors = null, string traceId = "") => new()
+    {
+        Success = false,
+        Message = message,
+        Data = Array.Empty<T>(),
+        Errors = errors,
+        TraceId = traceId,
+    };
 }
