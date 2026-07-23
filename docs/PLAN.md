@@ -62,13 +62,14 @@ Phases run one at a time, in order. A phase is not "done" until its acceptance c
 - [x] Bonus verified live: create → list (own listings, paginated) → detail → update (Pending only) → image upload (servable URL) → cancel → re-cancel blocked 422 via `ListingStateMachine` → cross-donor `GET` blocked 403 → non-Donor role blocked 403 by the `DonorOnly` policy.
 
 ## Phase 5 — Listings: Volunteer side + geo (4 endpoints)
-- [ ] `GET /api/listings/nearby`, claim (optimistic concurrency), confirm-pickup, confirm-delivery.
-- [ ] `RecipientMatcher` helper.
+- [x] `GET /api/listings/nearby`, claim (optimistic concurrency), confirm-pickup, confirm-delivery.
+- [x] `RecipientMatcher` helper.
 
 **Acceptance criteria**
-- [ ] Two parallel claims: exactly one 200, one 409.
-- [ ] Nearby returns correct ordered distances.
-- [ ] Invalid transitions all blocked by `ListingStateMachine`.
+- [x] Two parallel claims: exactly one 200, one 409 (verified live with two real concurrent `curl` requests against the same listing).
+- [x] Nearby returns correct ordered distances (verified live: two listings 0km and 5.79km apart, returned in ascending order).
+- [x] Invalid transitions all blocked by `ListingStateMachine` (verified live: `PickedUp→PickedUp`, `Delivered→Delivered`, `Claimed→Delivered` all 422).
+- [x] Bonus verified live: wrong-volunteer `confirm-pickup`/`confirm-delivery` → 403; `RecipientMatcher` auto-assigns the nearest available Verified recipient on pickup; `confirm-delivery` blocked (422) until a recipient is matched; Donor role blocked (403) from all Volunteer routes; out-of-range latitude on `nearby` → 422.
 
 ## Phase 6 — Recipient side (5 endpoints)
 - [ ] incoming, accept, reject, confirm-receipt (atomic: timeline + points + certificate + notifications), history.

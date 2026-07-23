@@ -23,7 +23,7 @@ FROM Listings";
 INSERT INTO Listings (DonorId, Title, FoodType, DietType, MealType, QuantityMeals, FreshnessTag, PreparedAtUtc, PickupDeadlineUtc, PickupAddress, Latitude, Longitude, Location, Status, VolunteerId, RecipientId, IsDeleted, CreatedAtUtc, UpdatedAtUtc)
 OUTPUT INSERTED.Id
 VALUES (@DonorId, @Title, @FoodType, @DietType, @MealType, @QuantityMeals, @FreshnessTag, @PreparedAtUtc, @PickupDeadlineUtc, @PickupAddress, @Latitude, @Longitude,
-        geography::Point(@Latitude, @Longitude, 4326),
+        " + GeoHelper.PointFromLatLngFragment + @",
         @Status, @VolunteerId, @RecipientId, @IsDeleted, @CreatedAtUtc, @UpdatedAtUtc);";
 
             var listingId = await connection.ExecuteScalarAsync<Guid>(new CommandDefinition(insertListingSql, listing, transaction, cancellationToken: cancellationToken));
@@ -97,7 +97,7 @@ UPDATE Listings SET
     PickupAddress = @PickupAddress,
     Latitude = @Latitude,
     Longitude = @Longitude,
-    Location = geography::Point(@Latitude, @Longitude, 4326),
+    Location = " + GeoHelper.PointFromLatLngFragment + @",
     UpdatedAtUtc = @UpdatedAtUtc
 WHERE Id = @Id AND IsDeleted = 0;";
 
@@ -106,10 +106,15 @@ WHERE Id = @Id AND IsDeleted = 0;";
         await connection.ExecuteAsync(command);
     }
 
+    /// <summary>
+    /// Updates status (plus VolunteerId/RecipientId, harmlessly re-set to their current
+    /// values when unchanged by the caller) and inserts the timeline event atomically.
+    /// Used by cancel, confirm-pickup (also assigns RecipientId), and confirm-delivery.
+    /// </summary>
     public Task ChangeStatusAsync(Listing listing, ListingTimelineEvent timelineEvent, CancellationToken cancellationToken = default) =>
         ExecuteInTransactionAsync(async (connection, transaction) =>
         {
-            const string updateSql = "UPDATE Listings SET Status = @Status, UpdatedAtUtc = @UpdatedAtUtc WHERE Id = @Id AND IsDeleted = 0;";
+            const string updateSql = "UPDATE Listings SET Status = @Status, VolunteerId = @VolunteerId, RecipientId = @RecipientId, UpdatedAtUtc = @UpdatedAtUtc WHERE Id = @Id AND IsDeleted = 0;";
             const string insertTimelineSql = @"
 INSERT INTO ListingTimeline (ListingId, FromStatus, ToStatus, ActorUserId, Note, PhotoUrl, CreatedAtUtc)
 VALUES (@ListingId, @FromStatus, @ToStatus, @ActorUserId, @Note, @PhotoUrl, @CreatedAtUtc);";
@@ -128,5 +133,81 @@ VALUES (NEWID(), @ListingId, @ImageUrl, @CreatedAtUtc, @UpdatedAtUtc);";
         using var connection = ConnectionFactory.CreateConnection();
         var command = new CommandDefinition(sql, image, cancellationToken: cancellationToken);
         return await connection.ExecuteScalarAsync<Guid>(command);
+    }
+
+    /// <summary>
+    /// Conditional UPDATE ... WHERE Status = Pending is the actual concurrency guard:
+    /// exactly one of two racing claims affects a row, the loser gets rowsAffected == 0.
+    /// </summary>
+    public Task<bool> TryClaimAsync(Guid listingId, Guid volunteerId, ListingTimelineEvent claimEvent, CancellationToken cancellationToken = default) =>
+        ExecuteInTransactionAsync(async (connection, transaction) =>
+        {
+            const string updateSql = @"
+UPDATE Listings SET Status = @ClaimedStatus, VolunteerId = @VolunteerId, UpdatedAtUtc = @UpdatedAtUtc
+WHERE Id = @ListingId AND Status = @PendingStatus AND IsDeleted = 0;";
+
+            var rowsAffected = await connection.ExecuteAsync(new CommandDefinition(
+                updateSql,
+                new
+                {
+                    ListingId = listingId,
+                    VolunteerId = volunteerId,
+                    UpdatedAtUtc = claimEvent.CreatedAtUtc,
+                    ClaimedStatus = (byte)ListingStatus.Claimed,
+                    PendingStatus = (byte)ListingStatus.Pending,
+                },
+                transaction,
+                cancellationToken: cancellationToken));
+
+            if (rowsAffected == 0)
+            {
+                return false;
+            }
+
+            claimEvent.ListingId = listingId;
+
+            const string insertTimelineSql = @"
+INSERT INTO ListingTimeline (ListingId, FromStatus, ToStatus, ActorUserId, Note, PhotoUrl, CreatedAtUtc)
+VALUES (@ListingId, @FromStatus, @ToStatus, @ActorUserId, @Note, @PhotoUrl, @CreatedAtUtc);";
+
+            await connection.ExecuteAsync(new CommandDefinition(insertTimelineSql, claimEvent, transaction, cancellationToken: cancellationToken));
+            return true;
+        }, cancellationToken);
+
+    public async Task<(IReadOnlyList<NearbyListing> Items, int TotalCount)> GetNearbyPendingAsync(decimal latitude, decimal longitude, double radiusMeters, int page, int pageSize, CancellationToken cancellationToken = default)
+    {
+        using var connection = ConnectionFactory.CreateConnection();
+
+        var distanceSql = $"Location.STDistance({GeoHelper.PointFromLatLngFragment})";
+        var whereSql = $@"
+WHERE Status = @PendingStatus AND IsDeleted = 0 AND PickupDeadlineUtc > @NowUtc
+    AND {distanceSql} <= @RadiusMeters";
+
+        var parameters = new
+        {
+            Latitude = latitude,
+            Longitude = longitude,
+            RadiusMeters = radiusMeters,
+            PendingStatus = (byte)ListingStatus.Pending,
+            NowUtc = DateTime.UtcNow,
+            Offset = (page - 1) * pageSize,
+            PageSize = pageSize,
+        };
+
+        var countCommand = new CommandDefinition("SELECT COUNT(*) FROM Listings" + whereSql, parameters, cancellationToken: cancellationToken);
+        var totalCount = await connection.ExecuteScalarAsync<int>(countCommand);
+
+        var itemsSql = $@"
+SELECT Id, Title, FoodType, DietType, MealType, QuantityMeals, FreshnessTag, PickupDeadlineUtc, PickupAddress, Latitude, Longitude,
+       {distanceSql} AS DistanceMeters
+FROM Listings
+{whereSql}
+ORDER BY DistanceMeters ASC
+OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;";
+
+        var itemsCommand = new CommandDefinition(itemsSql, parameters, cancellationToken: cancellationToken);
+        var items = (await connection.QueryAsync<NearbyListing>(itemsCommand)).ToList();
+
+        return (items, totalCount);
     }
 }

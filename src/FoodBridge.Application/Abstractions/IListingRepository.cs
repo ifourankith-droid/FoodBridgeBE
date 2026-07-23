@@ -29,4 +29,14 @@ public interface IListingRepository
     Task ChangeStatusAsync(Listing listing, ListingTimelineEvent timelineEvent, CancellationToken cancellationToken = default);
 
     Task<Guid> AddImageAsync(ListingImage image, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Atomically claims a Pending listing (Status = Pending → Claimed, VolunteerId set)
+    /// and inserts the timeline event, in one conditional UPDATE + INSERT. Returns false
+    /// if the listing was no longer Pending (already claimed, cancelled, etc.) — the
+    /// caller distinguishes 404 (missing) from 409 (conflict) afterward.
+    /// </summary>
+    Task<bool> TryClaimAsync(Guid listingId, Guid volunteerId, ListingTimelineEvent claimEvent, CancellationToken cancellationToken = default);
+
+    Task<(IReadOnlyList<NearbyListing> Items, int TotalCount)> GetNearbyPendingAsync(decimal latitude, decimal longitude, double radiusMeters, int page, int pageSize, CancellationToken cancellationToken = default);
 }

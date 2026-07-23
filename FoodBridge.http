@@ -189,3 +189,41 @@ Content-Type: image/jpeg
 
 < ./food.jpg
 --FoodBridgeBoundary--
+
+
+### --- Listings (Volunteer) ---
+
+### Nearby pending listings (default radius 10km, max 50km)
+GET {{baseUrl}}/api/listings/nearby?latitude=23.0338&longitude=72.5623&radiusKm=15&page=1&pageSize=20
+Authorization: Bearer PASTE_VOLUNTEER_JWT_HERE
+
+
+### Claim a pending listing (optimistic concurrency; 409 if already claimed)
+POST {{baseUrl}}/api/listings/{{listingId}}/claim
+Authorization: Bearer PASTE_VOLUNTEER_JWT_HERE
+
+
+### Confirm pickup (assigned volunteer only; requires photo; auto-matches nearest recipient)
+POST {{baseUrl}}/api/listings/{{listingId}}/confirm-pickup
+Authorization: Bearer PASTE_VOLUNTEER_JWT_HERE
+Content-Type: multipart/form-data; boundary=FoodBridgeBoundary
+
+--FoodBridgeBoundary
+Content-Disposition: form-data; name="photo"; filename="pickup.jpg"
+Content-Type: image/jpeg
+
+< ./pickup.jpg
+--FoodBridgeBoundary--
+
+
+### Confirm delivery (assigned volunteer only; requires photo + matched recipient)
+POST {{baseUrl}}/api/listings/{{listingId}}/confirm-delivery
+Authorization: Bearer PASTE_VOLUNTEER_JWT_HERE
+Content-Type: multipart/form-data; boundary=FoodBridgeBoundary
+
+--FoodBridgeBoundary
+Content-Disposition: form-data; name="photo"; filename="delivery.jpg"
+Content-Type: image/jpeg
+
+< ./delivery.jpg
+--FoodBridgeBoundary--
