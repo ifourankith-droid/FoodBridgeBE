@@ -14,6 +14,7 @@ See `docs/ARCHITECTURE.md` § Data dictionary → Enum value tables (Role, Accou
 - [Auth](#auth) — send-otp, verify-otp, register, logout, me
 - [Users](#users) — get/update profile, availability, avatar
 - [Listings — Donor](#listings--donor) — create, list, detail, update, cancel, image upload
+- [Listings — Volunteer](#listings--volunteer) — nearby, claim, confirm-pickup, confirm-delivery
 
 ## Auth
 All 5 endpoints route under `/api/auth`. None require a role policy; `logout` and `me` require any authenticated JWT (`[Authorize]`).
@@ -256,6 +257,46 @@ Success (200):
 The URL is directly servable (static files under `wwwroot/uploads`, same as avatars). Errors: 422 — `"Image must be 5MB or smaller."` / `"Image must be a JPG or PNG file."` / `"Images can only be added to pending listings."`; 400 — no file attached.
 
 ## Listings — Volunteer
+All 4 endpoints route under `/api/listings` and require `[Authorize(Policy = "VolunteerOnly")]` — any non-Volunteer role gets 403. `confirm-pickup`/`confirm-delivery` additionally check that the caller is the listing's assigned `VolunteerId` (403 otherwise, enforced in `VolunteerListingService`, not a policy).
+
+### GET /api/listings/nearby
+Lists `Pending` listings within `radiusKm` of the given coordinates, ordered by ascending distance. Listings whose `pickupDeadlineUtc` has already passed are excluded even though their `Status` is still `Pending` (the expiry job that formally flips them hasn't run yet — see `docs/ARCHITECTURE.md` decisions log).
+
+Query params: `latitude`, `longitude` (required), `radiusKm` (optional, default 10, clamped to a max of 50), `page` (default 1), `pageSize` (default 20, max 100).
+
+Success (200) — `PagedResponse<ListingNearbyResponse>`:
+```json
+{
+  "page": 1, "pageSize": 20, "totalCount": 2, "totalPages": 1,
+  "success": true, "message": "Success", "traceId": "...",
+  "data": [
+    { "id": "...", "title": "Fresh Test Listing", "foodType": "Sandwiches", "dietType": "Veg", "mealType": "Snacks", "quantityMeals": 20, "freshnessTag": "JustCooked", "pickupDeadlineUtc": "...", "pickupAddress": "C.G. Road, Navrangpura", "latitude": 23.0338, "longitude": 72.5623, "distanceKm": 0 },
+    { "id": "...", "title": "Second Fresh Listing", "foodType": "Rice and Curry", "dietType": "NonVeg", "mealType": "Lunch", "quantityMeals": 15, "freshnessTag": "FewHoursOld", "pickupDeadlineUtc": "...", "pickupAddress": "S.G. Highway, Bodakdev", "latitude": 23.0282, "longitude": 72.5061, "distanceKm": 5.79 }
+  ]
+}
+```
+422 — `latitude`/`longitude` out of range (e.g. `?latitude=999`).
+
+### POST /api/listings/{id}/claim
+Claims a `Pending` listing (`Pending → Claimed`, sets `VolunteerId` to the caller). Any available volunteer may claim any pending listing — no ownership beyond the role check.
+
+No request body. Success (200): a `ListingResponse` (same shape as the Donor detail endpoint) with `status: "Claimed"`.
+
+**409** — the listing is no longer `Pending` (already claimed by someone else, cancelled, expired, etc.) — `"Listing is no longer available to claim (current status: {status})."`. Verified live: two concurrent claim requests for the same listing resolve to exactly one 200 and one 409, backed by a conditional `UPDATE ... WHERE Status = Pending` rather than the `RowVersion` column. 404 — no such listing.
+
+### POST /api/listings/{id}/confirm-pickup
+Confirms pickup (`Claimed → PickedUp`). Assigned volunteer only. `multipart/form-data` with a required `photo` field (JPG/PNG, max 5MB). Auto-matches the nearest available Verified recipient via `RecipientMatcher` if the listing doesn't already have one.
+
+Success (200): same shape as `claim`, with `status: "PickedUp"`, a new timeline entry carrying `photoUrl`, and `recipientId` populated if a match was found (stays `null` if no recipient is currently available — pickup still succeeds).
+
+Errors: 403 — not the assigned volunteer; 422 — `photo` missing/wrong type/too large, or the listing isn't currently `Claimed` (`"Cannot transition listing from '{status}' to 'PickedUp'."`); 400 — no file attached.
+
+### POST /api/listings/{id}/confirm-delivery
+Confirms delivery (`PickedUp → Delivered`). Assigned volunteer only; requires a recipient to already be matched. `multipart/form-data` with a required `photo` field (JPG/PNG, max 5MB).
+
+Success (200): same shape, `status: "Delivered"`, new timeline entry with `photoUrl`.
+
+Errors: 403 — not the assigned volunteer; 422 — `"Cannot confirm delivery before a recipient has been matched."` (no `recipientId` yet), `photo` missing/wrong type/too large, or the listing isn't currently `PickedUp`; 400 — no file attached.
 
 ## Listings — Recipient
 

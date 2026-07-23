@@ -109,6 +109,10 @@ try
     builder.Services.AddScoped<IListingRepository, ListingRepository>();
     builder.Services.AddScoped<IListingService, ListingService>();
 
+    builder.Services.AddScoped<IRecipientReader, RecipientReader>();
+    builder.Services.AddScoped<IRecipientMatcher, RecipientMatcher>();
+    builder.Services.AddScoped<IVolunteerListingService, VolunteerListingService>();
+
     builder.Services.AddSingleton<IFileStorage>(_ => new LocalFileStorage(uploadsPath, "/uploads"));
 
     builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection(JwtSettings.SectionName));
