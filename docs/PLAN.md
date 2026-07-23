@@ -43,12 +43,14 @@ Phases run one at a time, in order. A phase is not "done" until its acceptance c
 - [x] No OTP stored in plaintext (`OtpCodes.CodeHash` is SHA-256 hex, verified in DB).
 
 ## Phase 3 — User / Profile module (4 endpoints)
-- [ ] `GET/PUT /api/users/{id}`, `PATCH /api/users/{id}/availability`, `POST /api/users/{id}/avatar`.
-- [ ] `ICurrentUser` service; `IFileStorage` + `LocalFileStorage`.
-- [ ] Docs + .http updated.
+- [x] `GET/PUT /api/users/{id}`, `PATCH /api/users/{id}/availability`, `POST /api/users/{id}/avatar`.
+- [x] `ICurrentUser` service; `IFileStorage` + `LocalFileStorage`.
+- [x] Docs + .http updated.
 
 **Acceptance criteria**
-- [ ] User A cannot edit user B (403 envelope). Avatar upload returns a servable URL.
+- [x] User A cannot edit user B (403 envelope) — verified with a Volunteer JWT against another user's `GET`/`PUT`.
+- [x] Avatar upload returns a servable URL — verified end-to-end (upload → 200 with `/uploads/{guid}.jpg` → fetched that exact URL → 200 `image/jpeg`).
+- [x] Bonus verified: Admin can `GET` any profile; Donor gets 403 on `PATCH .../availability` (role-restricted even for their own account); bad file extension → 422.
 
 ## Phase 4 — Listings: Donor side (6 endpoints)
 - [ ] Create/list/detail/update/cancel listing, image upload.

@@ -122,6 +122,51 @@ Success (200):
 401 if no/invalid/revoked token.
 
 ## Users
+All 4 endpoints route under `/api/users` and require `[Authorize]` (any authenticated JWT). Authorization beyond that (self-or-admin, self-only, role restriction) is enforced in `UserService`, not via policy attributes, since it depends on the target resource, not just the caller's role.
+
+### GET /api/users/{id}
+Callable by the user themselves, or an Admin for any user.
+
+Success (200):
+```json
+{
+  "success": true, "message": "Success", "traceId": "...",
+  "data": {
+    "id": "...", "mobile": "9999900003", "name": "Raj Patel", "role": "Volunteer",
+    "city": "Ahmedabad", "address": "Satellite", "latitude": 23.02, "longitude": 72.53,
+    "recipientType": null, "capacityMeals": null, "isAvailable": true,
+    "accountStatus": "Verified", "avatarUrl": null
+  }
+}
+```
+403 if requesting another user's profile without the Admin role.
+
+### PUT /api/users/{id}
+Self only (no Admin override). Updating `latitude`/`longitude` also recomputes the `Location` geography column. `capacityMeals` only persists for Recipients (ignored otherwise). `role` and `recipientType` cannot be changed here.
+
+Request:
+```json
+{ "name": "Raj Patel", "city": "Ahmedabad", "address": "New Address, Satellite", "latitude": 23.05, "longitude": 72.54, "capacityMeals": null }
+```
+Success (200): same shape as GET. 403 if `id` isn't the caller's own.
+
+### PATCH /api/users/{id}/availability
+Self only, **and** only for Volunteers/Recipients — Donors and Admins get 403 even on their own account, since availability has no meaning for those roles.
+
+Request:
+```json
+{ "isAvailable": false }
+```
+Success (200): same shape as GET, with `isAvailable` updated.
+
+### POST /api/users/{id}/avatar
+Self only. `multipart/form-data` with a `file` field. JPG/PNG only, 2MB max.
+
+Success (200):
+```json
+{ "success": true, "message": "Success", "traceId": "...", "data": { "avatarUrl": "/uploads/b13da59b-....jpg" } }
+```
+The returned URL is directly servable (static files under `wwwroot/uploads`). Errors: 422 — `"Avatar must be 2MB or smaller."` / `"Avatar must be a JPG or PNG image."`; 400 if no file attached.
 
 ## Listings — Donor
 

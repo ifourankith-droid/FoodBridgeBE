@@ -1,6 +1,5 @@
-using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
 using FluentValidation;
+using FoodBridge.Application.Abstractions;
 using FoodBridge.Application.Auth;
 using FoodBridge.Application.Auth.Dtos;
 using FoodBridge.Application.Common;
@@ -16,17 +15,20 @@ namespace FoodBridge.Api.Controllers;
 public sealed class AuthController : BaseController
 {
     private readonly IAuthService _authService;
+    private readonly ICurrentUser _currentUser;
     private readonly IValidator<SendOtpRequest> _sendOtpValidator;
     private readonly IValidator<VerifyOtpRequest> _verifyOtpValidator;
     private readonly IValidator<RegisterRequest> _registerValidator;
 
     public AuthController(
         IAuthService authService,
+        ICurrentUser currentUser,
         IValidator<SendOtpRequest> sendOtpValidator,
         IValidator<VerifyOtpRequest> verifyOtpValidator,
         IValidator<RegisterRequest> registerValidator)
     {
         _authService = authService;
+        _currentUser = currentUser;
         _sendOtpValidator = sendOtpValidator;
         _verifyOtpValidator = verifyOtpValidator;
         _registerValidator = registerValidator;
@@ -73,11 +75,7 @@ public sealed class AuthController : BaseController
     [HttpPost("logout")]
     public async Task<ActionResult<ApiResponse<object?>>> Logout(CancellationToken cancellationToken)
     {
-        var jti = User.FindFirstValue(JwtRegisteredClaimNames.Jti)!;
-        var expUnixSeconds = long.Parse(User.FindFirstValue(JwtRegisteredClaimNames.Exp)!);
-        var expiresAtUtc = DateTimeOffset.FromUnixTimeSeconds(expUnixSeconds).UtcDateTime;
-
-        var result = await _authService.LogoutAsync(jti, expiresAtUtc, cancellationToken);
+        var result = await _authService.LogoutAsync(_currentUser.TokenId, _currentUser.TokenExpiresAtUtc, cancellationToken);
         return HandleResult(result);
     }
 
@@ -88,8 +86,7 @@ public sealed class AuthController : BaseController
     [HttpGet("me")]
     public async Task<ActionResult<ApiResponse<UserResponse>>> Me(CancellationToken cancellationToken)
     {
-        var userId = Guid.Parse(User.FindFirstValue(JwtRegisteredClaimNames.Sub)!);
-        var result = await _authService.GetMeAsync(userId, cancellationToken);
+        var result = await _authService.GetMeAsync(_currentUser.UserId, cancellationToken);
         return HandleResult(result);
     }
 }

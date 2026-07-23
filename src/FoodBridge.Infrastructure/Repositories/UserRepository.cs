@@ -42,4 +42,39 @@ VALUES (@Mobile, @Name, @Role, @City, @Address, @Latitude, @Longitude,
         var command = new CommandDefinition(sql, user, cancellationToken: cancellationToken);
         return await connection.ExecuteScalarAsync<Guid>(command);
     }
+
+    public async Task UpdateProfileAsync(User user, CancellationToken cancellationToken = default)
+    {
+        const string sql = @"
+UPDATE Users SET
+    Name = @Name,
+    City = @City,
+    Address = @Address,
+    Latitude = @Latitude,
+    Longitude = @Longitude,
+    Location = CASE WHEN @Latitude IS NOT NULL AND @Longitude IS NOT NULL THEN geography::Point(@Latitude, @Longitude, 4326) ELSE NULL END,
+    CapacityMeals = @CapacityMeals,
+    UpdatedAtUtc = @UpdatedAtUtc
+WHERE Id = @Id AND IsDeleted = 0;";
+
+        using var connection = ConnectionFactory.CreateConnection();
+        var command = new CommandDefinition(sql, user, cancellationToken: cancellationToken);
+        await connection.ExecuteAsync(command);
+    }
+
+    public async Task UpdateAvailabilityAsync(Guid id, bool isAvailable, CancellationToken cancellationToken = default)
+    {
+        const string sql = "UPDATE Users SET IsAvailable = @IsAvailable, UpdatedAtUtc = SYSUTCDATETIME() WHERE Id = @Id AND IsDeleted = 0;";
+        using var connection = ConnectionFactory.CreateConnection();
+        var command = new CommandDefinition(sql, new { Id = id, IsAvailable = isAvailable }, cancellationToken: cancellationToken);
+        await connection.ExecuteAsync(command);
+    }
+
+    public async Task UpdateAvatarUrlAsync(Guid id, string avatarUrl, CancellationToken cancellationToken = default)
+    {
+        const string sql = "UPDATE Users SET AvatarUrl = @AvatarUrl, UpdatedAtUtc = SYSUTCDATETIME() WHERE Id = @Id AND IsDeleted = 0;";
+        using var connection = ConnectionFactory.CreateConnection();
+        var command = new CommandDefinition(sql, new { Id = id, AvatarUrl = avatarUrl }, cancellationToken: cancellationToken);
+        await connection.ExecuteAsync(command);
+    }
 }

@@ -3,14 +3,17 @@ using System.Text;
 using FluentMigrator.Runner;
 using FluentMigrator.Runner.Initialization;
 using FluentValidation;
+using FoodBridge.Api.Common;
 using FoodBridge.Api.Middleware;
 using FoodBridge.Application.Abstractions;
 using FoodBridge.Application.Auth;
 using FoodBridge.Application.Common;
+using FoodBridge.Application.Users;
 using FoodBridge.Domain.Enums;
 using FoodBridge.Infrastructure.Auth;
 using FoodBridge.Infrastructure.Common;
 using FoodBridge.Infrastructure.Repositories;
+using FoodBridge.Infrastructure.Storage;
 using FoodBridge.Migrations;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
@@ -26,6 +29,13 @@ Log.Logger = new LoggerConfiguration()
 
 try
 {
+    // Must exist before WebApplication.CreateBuilder(args) runs: it snapshots
+    // IWebHostEnvironment.WebRootFileProvider at that point, and a missing
+    // wwwroot locks it in as a NullFileProvider that UseStaticFiles() can't
+    // later serve from, even if the directory is created afterward.
+    var uploadsPath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "uploads");
+    Directory.CreateDirectory(uploadsPath);
+
     var builder = WebApplication.CreateBuilder(args);
 
     builder.Host.UseSerilog((context, services, configuration) => configuration
@@ -90,6 +100,12 @@ try
     builder.Services.AddScoped<IPasswordlessSessionService, PasswordlessSessionHelper>();
     builder.Services.AddSingleton<ITokenDenylist, InMemoryTokenDenylist>();
     builder.Services.AddScoped<IAuthService, AuthService>();
+
+    builder.Services.AddHttpContextAccessor();
+    builder.Services.AddScoped<ICurrentUser, CurrentUserAccessor>();
+    builder.Services.AddScoped<IUserService, UserService>();
+
+    builder.Services.AddSingleton<IFileStorage>(_ => new LocalFileStorage(uploadsPath, "/uploads"));
 
     builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection(JwtSettings.SectionName));
     var jwtSettings = builder.Configuration.GetSection(JwtSettings.SectionName).Get<JwtSettings>() ?? new JwtSettings();
@@ -158,6 +174,7 @@ try
     }
 
     app.UseHttpsRedirection();
+    app.UseStaticFiles();
     app.UseCors("AllowAngularDev");
     app.UseAuthentication();
     app.UseAuthorization();

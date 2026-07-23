@@ -67,3 +67,49 @@ Authorization: Bearer PASTE_JWT_HERE
 ### Logout
 POST {{baseUrl}}/api/auth/logout
 Authorization: Bearer PASTE_JWT_HERE
+
+
+### --- Users ---
+@userId = PASTE_USER_ID_HERE
+
+### Get profile (self or admin)
+GET {{baseUrl}}/api/users/{{userId}}
+Authorization: Bearer PASTE_JWT_HERE
+
+
+### Update profile (self only; updates Location if lat/lng given)
+PUT {{baseUrl}}/api/users/{{userId}}
+Authorization: Bearer PASTE_JWT_HERE
+Content-Type: application/json
+
+{
+  "name": "Raj Patel",
+  "city": "Ahmedabad",
+  "address": "New Address, Satellite",
+  "latitude": 23.05,
+  "longitude": 72.54,
+  "capacityMeals": null
+}
+
+
+### Toggle availability (self only; Volunteer/Recipient only)
+PATCH {{baseUrl}}/api/users/{{userId}}/availability
+Authorization: Bearer PASTE_JWT_HERE
+Content-Type: application/json
+
+{
+  "isAvailable": false
+}
+
+
+### Upload avatar (self only; JPG/PNG, max 2MB)
+POST {{baseUrl}}/api/users/{{userId}}/avatar
+Authorization: Bearer PASTE_JWT_HERE
+Content-Type: multipart/form-data; boundary=FoodBridgeBoundary
+
+--FoodBridgeBoundary
+Content-Disposition: form-data; name="file"; filename="avatar.jpg"
+Content-Type: image/jpeg
+
+< ./avatar.jpg
+--FoodBridgeBoundary--
