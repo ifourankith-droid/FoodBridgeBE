@@ -93,11 +93,14 @@ Phases run one at a time, in order. A phase is not "done" until its acceptance c
 - [x] Bonus verified live via the same SignalR harness: `TrackingHub.UpdateLocation` (volunteer) → `LocationUpdated` pushed live to the donor's joined tracking group; the REST `GET .../track` fallback returned the identical stored location afterward; an uninvolved user hitting `track` got 403; `GET/PATCH /api/notifications` REST fallback works; `GET /api/geocode` resolves known Ahmedabad localities and falls back to an approximate city-center marker for unknown addresses.
 
 ## Phase 8 — Certificates, Leaderboard, Reports (8 endpoints)
-- [ ] `IPdfGenerator` + `QuestPdfCertificateGenerator`.
-- [ ] Certificate list/detail/pdf, leaderboard, donor/recipient reports.
+- [x] `IPdfGenerator` + `QuestPdfCertificateGenerator`.
+- [x] Certificate list/detail/pdf, leaderboard (+ my-rank), donor/volunteer/recipient reports (8: 3 + 2 + 3).
 
 **Acceptance criteria**
-- [ ] PDF downloads and opens; leaderboard ranks correctly; report JSON is chart-ready.
+- [x] PDF downloads and opens — verified live: downloaded a real certificate PDF over HTTP (`%PDF-1.4` magic bytes, correct `Content-Type`/`Content-Disposition`) and visually confirmed it renders correctly (donor name, listing title, meal count, certificate number, issue date all correct).
+- [x] Leaderboard ranks correctly — verified live with two volunteers at different point totals (62 vs 5): returned in descending-points order with `RANK()`; a volunteer with zero deliveries correctly gets `null` data on `/leaderboard/me` rather than an error.
+- [x] Report JSON is chart-ready — verified live for all three roles: each returns a summary plus a `ChartPoint[]` (`{ period: "yyyy-MM", value }`) series, directly bindable to a chart with no client-side reshaping.
+- [x] Bonus verified live: PdfUrl starts null and gets populated on first render only; cross-donor certificate access → 403; wrong-role report access (Donor → `/reports/volunteer`) → 403.
 
 ## Phase 9 — Admin module (8 endpoints)
 - [ ] Dashboard stats, listings/accounts management, verify/suspend, disputes, platform reports.

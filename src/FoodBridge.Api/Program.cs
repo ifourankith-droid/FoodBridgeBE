@@ -10,16 +10,20 @@ using FoodBridge.Api.Middleware;
 using FoodBridge.Api.Notifications;
 using FoodBridge.Application.Abstractions;
 using FoodBridge.Application.Auth;
+using FoodBridge.Application.Certificates;
 using FoodBridge.Application.Common;
 using FoodBridge.Application.Geocoding;
+using FoodBridge.Application.Leaderboard;
 using FoodBridge.Application.Listings;
 using FoodBridge.Application.Notifications;
+using FoodBridge.Application.Reports;
 using FoodBridge.Application.Tracking;
 using FoodBridge.Application.Users;
 using FoodBridge.Domain.Enums;
 using FoodBridge.Infrastructure.Auth;
 using FoodBridge.Infrastructure.Common;
 using FoodBridge.Infrastructure.Geocoding;
+using FoodBridge.Infrastructure.Pdf;
 using FoodBridge.Infrastructure.Repositories;
 using FoodBridge.Infrastructure.Storage;
 using FoodBridge.Infrastructure.Tracking;
@@ -27,6 +31,7 @@ using FoodBridge.Migrations;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using QuestPDF.Infrastructure;
 using Serilog;
 
 Log.Logger = new LoggerConfiguration()
@@ -44,6 +49,8 @@ try
     // later serve from, even if the directory is created afterward.
     var uploadsPath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "uploads");
     Directory.CreateDirectory(uploadsPath);
+
+    QuestPDF.Settings.License = LicenseType.Community;
 
     var builder = WebApplication.CreateBuilder(args);
 
@@ -134,6 +141,16 @@ try
     builder.Services.AddScoped<IGeocodingService, GeocodingService>();
 
     builder.Services.AddHostedService<ListingExpiryBackgroundService>();
+
+    builder.Services.AddScoped<ICertificateRepository, CertificateRepository>();
+    builder.Services.AddScoped<ICertificateService, CertificateService>();
+    builder.Services.AddScoped<IPdfGenerator, QuestPdfCertificateGenerator>();
+
+    builder.Services.AddScoped<ILeaderboardReader, LeaderboardReader>();
+    builder.Services.AddScoped<ILeaderboardService, LeaderboardService>();
+
+    builder.Services.AddScoped<IReportsReader, ReportsReader>();
+    builder.Services.AddScoped<IReportService, ReportService>();
 
     builder.Services.AddSingleton<IFileStorage>(_ => new LocalFileStorage(uploadsPath, "/uploads"));
 

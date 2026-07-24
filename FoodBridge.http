@@ -283,3 +283,46 @@ Authorization: Bearer PASTE_JWT_HERE
 
 ### Geocode an address (no auth required)
 GET {{baseUrl}}/api/geocode?address=Paldi, Ahmedabad
+
+
+### --- Certificates, Leaderboard, Reports ---
+@certificateId = PASTE_CERTIFICATE_ID_HERE
+
+### My certificates (Donor only)
+GET {{baseUrl}}/api/certificates?page=1&pageSize=20
+Authorization: Bearer PASTE_DONOR_JWT_HERE
+
+
+### Certificate detail
+GET {{baseUrl}}/api/certificates/{{certificateId}}
+Authorization: Bearer PASTE_DONOR_JWT_HERE
+
+
+### Download certificate PDF
+GET {{baseUrl}}/api/certificates/{{certificateId}}/pdf
+Authorization: Bearer PASTE_DONOR_JWT_HERE
+
+
+### Leaderboard (any role)
+GET {{baseUrl}}/api/leaderboard?page=1&pageSize=20
+Authorization: Bearer PASTE_JWT_HERE
+
+
+### My rank (Volunteer only)
+GET {{baseUrl}}/api/leaderboard/me
+Authorization: Bearer PASTE_VOLUNTEER_JWT_HERE
+
+
+### Donor impact report
+GET {{baseUrl}}/api/reports/donor
+Authorization: Bearer PASTE_DONOR_JWT_HERE
+
+
+### Volunteer impact report
+GET {{baseUrl}}/api/reports/volunteer
+Authorization: Bearer PASTE_VOLUNTEER_JWT_HERE
+
+
+### Recipient impact report
+GET {{baseUrl}}/api/reports/recipient
+Authorization: Bearer PASTE_RECIPIENT_JWT_HERE

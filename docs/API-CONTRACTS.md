@@ -17,6 +17,7 @@ See `docs/ARCHITECTURE.md` § Data dictionary → Enum value tables (Role, Accou
 - [Listings — Volunteer](#listings--volunteer) — nearby, claim, confirm-pickup, confirm-delivery
 - [Listings — Recipient](#listings--recipient) — incoming, accept, reject, confirm-receipt, history
 - [Notifications & real-time (SignalR contract)](#notifications--real-time-signalr-contract) — notifications list/read, tracking, geocode
+- [Certificates, Leaderboard, Reports](#certificates-leaderboard-reports) — certificate list/detail/pdf, leaderboard (+ my-rank), donor/volunteer/recipient reports
 
 ## Auth
 All 5 endpoints route under `/api/auth`. None require a role policy; `logout` and `me` require any authenticated JWT (`[Authorize]`).
@@ -383,6 +384,91 @@ Success (200):
 
 ## Certificates, Leaderboard, Reports
 
+### GET /api/certificates
+`[Authorize(Policy = "DonorOnly")]`. Lists the caller's own donation certificates, newest first.
+
+Query params: `page` (default 1), `pageSize` (default 20, max 100).
+
+Success (200) — `PagedResponse<CertificateResponse>`:
+```json
+{
+  "page": 1, "pageSize": 20, "totalCount": 2, "totalPages": 1,
+  "success": true, "message": "Success", "traceId": "...",
+  "data": [ { "id": "...", "certificateNumber": "FB-202607-00002", "listingId": "...", "mealsCount": 12, "issuedAtUtc": "...", "pdfUrl": null } ]
+}
+```
+`pdfUrl` is `null` until `GET .../pdf` is called for that certificate at least once.
+
+### GET /api/certificates/{id}
+`[Authorize(Policy = "DonorOnly")]`, self only. Success (200): a single `CertificateResponse` (same shape as above). 403 — belongs to a different donor; 404 — no such certificate.
+
+### GET /api/certificates/{id}/pdf
+`[Authorize(Policy = "DonorOnly")]`, self only. Returns the certificate as a downloadable PDF — **not** wrapped in the `ApiResponse` envelope (a binary file can't be JSON); 403/404 for ownership/missing still go through the normal exception-handling pipeline. Regenerates the PDF fresh on every call; lazily records `Certificates.PdfUrl` the first time only (subsequent calls don't need it to be set).
+
+Success (200): `Content-Type: application/pdf`, `Content-Disposition: attachment; filename=FoodBridge-Certificate-{id}.pdf`, PDF bytes as the body.
+
+### GET /api/leaderboard
+`[Authorize]`, any role. Volunteers ranked by total `VolunteerPoints`, descending.
+
+Query params: `page` (default 1), `pageSize` (default 20, max 100).
+
+Success (200) — `PagedResponse<LeaderboardEntryResponse>`:
+```json
+{
+  "page": 1, "pageSize": 20, "totalCount": 2, "totalPages": 1,
+  "success": true, "message": "Success", "traceId": "...",
+  "data": [
+    { "volunteerId": "...", "name": "Raj Patel", "totalPoints": 62, "totalDeliveries": 2, "rank": 1 },
+    { "volunteerId": "...", "name": "Priya Shah", "totalPoints": 5, "totalDeliveries": 1, "rank": 2 }
+  ]
+}
+```
+
+### GET /api/leaderboard/me
+`[Authorize(Policy = "VolunteerOnly")]`. The caller's own entry from the same ranking.
+
+Success (200): a single `LeaderboardEntryResponse`, or `data: null` with `message: "You haven't completed a delivery yet."` if the caller has no `VolunteerPoints` rows yet.
+
+### GET /api/reports/donor
+`[Authorize(Policy = "DonorOnly")]`. Chart-ready impact summary sourced from the caller's own `Certificates` (completed, confirmed donations) plus a raw `Listings` count for overall activity.
+
+Success (200):
+```json
+{
+  "success": true, "message": "Success", "traceId": "...",
+  "data": { "totalListings": 12, "totalMealsDonated": 67, "totalCertificates": 3, "mealsDonatedByMonth": [ { "period": "2026-07", "value": 67 } ] }
+}
+```
+
+### GET /api/reports/volunteer
+`[Authorize(Policy = "VolunteerOnly")]`. Sourced from the caller's own `VolunteerPoints` rows (one per completed delivery).
+
+Success (200):
+```json
+{
+  "success": true, "message": "Success", "traceId": "...",
+  "data": { "totalDeliveries": 2, "totalPoints": 62, "deliveriesByMonth": [ { "period": "2026-07", "value": 2 } ] }
+}
+```
+
+### GET /api/reports/recipient
+`[Authorize(Policy = "RecipientOnly")]`. Sourced from the caller's own `Listings` where `Status = Confirmed` (no `RecipientId` column on `Certificates` to join through instead).
+
+Success (200):
+```json
+{
+  "success": true, "message": "Success", "traceId": "...",
+  "data": { "totalMealsReceived": 117, "totalDeliveriesReceived": 3, "mealsReceivedByMonth": [ { "period": "2026-07", "value": 117 } ] }
+}
+```
+
+All three report `*ByMonth` series use the same `{ period: "yyyy-MM", value: number }` shape — directly bindable to a chart with no client-side reshaping.
+
 ## Admin
 
 ## Chart data contract
+Every chart-shaped series in the API (currently: `GET /api/reports/donor|volunteer|recipient`'s `*ByMonth` fields) uses the same `ChartPoint` shape:
+```json
+{ "period": "2026-07", "value": 67 }
+```
+`period` is `"yyyy-MM"` — a plain string, already lexicographically sortable, one point per calendar month that has at least one contributing row (no zero-filled gaps for months with no activity). `value` is a plain integer whose meaning is defined per-series (meals, deliveries, points, etc. — see the field name it's nested under). Bind directly to any bar/line chart's x/y without reshaping.
