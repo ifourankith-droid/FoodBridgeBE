@@ -118,6 +118,14 @@ try
     builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection(JwtSettings.SectionName));
     var jwtSettings = builder.Configuration.GetSection(JwtSettings.SectionName).Get<JwtSettings>() ?? new JwtSettings();
 
+    // Only bound in Development, even if the "Otp" key ever leaked into a non-dev
+    // config file — AuthService falls back to a random OTP whenever this section
+    // isn't registered, so a fixed OTP can never take effect outside local dev.
+    if (builder.Environment.IsDevelopment())
+    {
+        builder.Services.Configure<OtpSettings>(builder.Configuration.GetSection(OtpSettings.SectionName));
+    }
+
     builder.Services
         .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         .AddJwtBearer(options =>

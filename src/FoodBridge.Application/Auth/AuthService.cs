@@ -4,6 +4,7 @@ using FoodBridge.Application.Common;
 using FoodBridge.Domain.Entities;
 using FoodBridge.Domain.Enums;
 using FoodBridge.Domain.Exceptions;
+using Microsoft.Extensions.Options;
 
 namespace FoodBridge.Application.Auth;
 
@@ -21,6 +22,7 @@ public sealed class AuthService : IAuthService
     private readonly IPasswordlessSessionService _passwordlessSessionService;
     private readonly ITokenDenylist _tokenDenylist;
     private readonly IClock _clock;
+    private readonly OtpSettings _otpSettings;
 
     public AuthService(
         IUserRepository userRepository,
@@ -29,7 +31,8 @@ public sealed class AuthService : IAuthService
         IJwtTokenGenerator jwtTokenGenerator,
         IPasswordlessSessionService passwordlessSessionService,
         ITokenDenylist tokenDenylist,
-        IClock clock)
+        IClock clock,
+        IOptions<OtpSettings> otpSettings)
     {
         _userRepository = userRepository;
         _otpCodeRepository = otpCodeRepository;
@@ -38,6 +41,7 @@ public sealed class AuthService : IAuthService
         _passwordlessSessionService = passwordlessSessionService;
         _tokenDenylist = tokenDenylist;
         _clock = clock;
+        _otpSettings = otpSettings.Value;
     }
 
     public async Task<Result> SendOtpAsync(SendOtpRequest request, CancellationToken cancellationToken = default)
@@ -49,7 +53,9 @@ public sealed class AuthService : IAuthService
             throw new RateLimitExceededException("Too many OTP requests. Please try again later.");
         }
 
-        var code = OtpGenerator.GenerateCode();
+        var code = string.IsNullOrWhiteSpace(_otpSettings.FixedDevelopmentCode)
+            ? OtpGenerator.GenerateCode()
+            : _otpSettings.FixedDevelopmentCode;
         var otpCode = new OtpCode
         {
             Id = Guid.NewGuid(),

@@ -22,6 +22,8 @@ All 5 endpoints route under `/api/auth`. None require a role policy; `logout` an
 ### POST /api/auth/send-otp
 Sends a 6-digit OTP via the configured `ISmsProvider` (dev: `MockSmsProvider` logs it at Information level — check the console/`logs/foodbridge-*.log`). Rate-limited to 3 sends per mobile per 15 minutes.
 
+> **Dev shortcut**: `appsettings.Development.json`'s `Otp:FixedDevelopmentCode` (default `123456`) makes every OTP that fixed value — skip the log, just call `verify-otp` with `123456`. See `docs/ARCHITECTURE.md` § Seed data for the seeded mobile numbers per role. Never active outside Development (see the decisions log).
+
 Request:
 ```json
 { "mobile": "9876543210" }
