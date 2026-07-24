@@ -7,5 +7,5 @@ namespace FoodBridge.Application.Abstractions;
 /// </summary>
 public interface IRecipientReader
 {
-    Task<Guid?> FindNearestAvailableRecipientIdAsync(decimal latitude, decimal longitude, CancellationToken cancellationToken = default);
+    Task<Guid?> FindNearestAvailableRecipientIdAsync(decimal latitude, decimal longitude, IReadOnlyCollection<Guid>? excludeRecipientIds = null, CancellationToken cancellationToken = default);
 }

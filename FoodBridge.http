@@ -227,3 +227,30 @@ Content-Type: image/jpeg
 
 < ./delivery.jpg
 --FoodBridgeBoundary--
+
+
+### --- Listings (Recipient) ---
+
+### Incoming matches (awaiting accept/reject)
+GET {{baseUrl}}/api/listings/incoming?page=1&pageSize=20
+Authorization: Bearer PASTE_RECIPIENT_JWT_HERE
+
+
+### Accept an incoming match (doesn't change Status)
+POST {{baseUrl}}/api/listings/{{listingId}}/accept
+Authorization: Bearer PASTE_RECIPIENT_JWT_HERE
+
+
+### Reject an incoming match (auto-reassigns to another available recipient)
+POST {{baseUrl}}/api/listings/{{listingId}}/reject
+Authorization: Bearer PASTE_RECIPIENT_JWT_HERE
+
+
+### Confirm receipt (Delivered -> Confirmed; atomic points + certificate + notifications)
+POST {{baseUrl}}/api/listings/{{listingId}}/confirm-receipt
+Authorization: Bearer PASTE_RECIPIENT_JWT_HERE
+
+
+### Receipt history (past confirmed receipts)
+GET {{baseUrl}}/api/listings/history?page=1&pageSize=20
+Authorization: Bearer PASTE_RECIPIENT_JWT_HERE

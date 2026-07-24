@@ -39,4 +39,24 @@ public interface IListingRepository
     Task<bool> TryClaimAsync(Guid listingId, Guid volunteerId, ListingTimelineEvent claimEvent, CancellationToken cancellationToken = default);
 
     Task<(IReadOnlyList<NearbyListing> Items, int TotalCount)> GetNearbyPendingAsync(decimal latitude, decimal longitude, double radiusMeters, int page, int pageSize, CancellationToken cancellationToken = default);
+
+    /// <summary>Listings currently matched to this recipient and awaiting their accept/reject decision (Status = PickedUp).</summary>
+    Task<(IReadOnlyList<Listing> Items, int TotalCount)> GetIncomingForRecipientAsync(Guid recipientId, int page, int pageSize, CancellationToken cancellationToken = default);
+
+    /// <summary>This recipient's past confirmed receipts (Status = Confirmed).</summary>
+    Task<(IReadOnlyList<Listing> Items, int TotalCount)> GetHistoryForRecipientAsync(Guid recipientId, int page, int pageSize, CancellationToken cancellationToken = default);
+
+    /// <summary>Single-row timeline insert with no other side effects — used by accept, which doesn't change Status.</summary>
+    Task AddTimelineEventAsync(ListingTimelineEvent timelineEvent, CancellationToken cancellationToken = default);
+
+    /// <summary>Updates RecipientId (and UpdatedAtUtc) and inserts the timeline event atomically. Used by reject; Status is unchanged.</summary>
+    Task ReassignRecipientAsync(Listing listing, ListingTimelineEvent timelineEvent, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Atomically: Listings status → Confirmed, ListingTimeline insert, VolunteerPoints
+    /// insert, Certificates insert (mutates <paramref name="certificate"/>.CertificateNumber
+    /// with the generated number), and one Notifications insert per entry in
+    /// <paramref name="notifications"/> — all in one transaction (all-or-nothing).
+    /// </summary>
+    Task ConfirmReceiptAsync(Listing listing, ListingTimelineEvent timelineEvent, VolunteerPoint volunteerPoint, Certificate certificate, IReadOnlyList<Notification> notifications, CancellationToken cancellationToken = default);
 }

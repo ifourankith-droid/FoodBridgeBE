@@ -72,12 +72,13 @@ Phases run one at a time, in order. A phase is not "done" until its acceptance c
 - [x] Bonus verified live: wrong-volunteer `confirm-pickup`/`confirm-delivery` → 403; `RecipientMatcher` auto-assigns the nearest available Verified recipient on pickup; `confirm-delivery` blocked (422) until a recipient is matched; Donor role blocked (403) from all Volunteer routes; out-of-range latitude on `nearby` → 422.
 
 ## Phase 6 — Recipient side (5 endpoints)
-- [ ] incoming, accept, reject, confirm-receipt (atomic: timeline + points + certificate + notifications), history.
-- [ ] **Reject implements simple auto-reassignment** (nearest other available Verified recipient via `RecipientMatcher`) — scope increase from the original "manual re-pick, roadmap-only" note, decided after comparing against the prototype; see `docs/ARCHITECTURE.md` decisions log.
+- [x] incoming, accept, reject, confirm-receipt (atomic: timeline + points + certificate + notifications), history.
+- [x] **Reject implements simple auto-reassignment** (nearest other available Verified recipient via `RecipientMatcher`) — scope increase from the original "manual re-pick, roadmap-only" note, decided after comparing against the prototype; see `docs/ARCHITECTURE.md` decisions log.
 
 **Acceptance criteria**
-- [ ] Confirm-receipt is all-or-nothing (atomicity proven).
-- [ ] Reject reassigns to a different available recipient automatically (or produces a clear "no recipient available" outcome if none exists).
+- [x] Confirm-receipt is all-or-nothing (atomicity proven) — verified live via direct DB query: `Listings.Status`, `ListingTimeline`, `VolunteerPoints`, `Certificates`, and both `Notifications` rows all landed together after one call.
+- [x] Reject reassigns to a different available recipient automatically (or produces a clear "no recipient available" outcome if none exists) — verified live with the 2 seeded recipients: 1st reject → reassigned to the other; 2nd reject (by that other) → `recipientId: null`, `"No other recipient is currently available."`. Caught and fixed a real bug here: excluding only the *current* recipient let two recipients ping-pong forever, so "no recipient available" was unreachable — fixed by excluding everyone who has already rejected this listing (see decisions log).
+- [x] Bonus verified live: wrong-recipient (already reassigned away) on any action → 403; `confirm-receipt` before `Delivered` → 422; double `confirm-receipt` → 422; `accept`/`reject` don't change `Status`; `history` shows confirmed receipts.
 
 ## Phase 7 — Real-time: SignalR notifications + tracking + expiry job
 - [ ] `INotificationDispatcher` + `SignalRNotificationDispatcher`.

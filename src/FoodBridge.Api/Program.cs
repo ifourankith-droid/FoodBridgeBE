@@ -112,6 +112,7 @@ try
     builder.Services.AddScoped<IRecipientReader, RecipientReader>();
     builder.Services.AddScoped<IRecipientMatcher, RecipientMatcher>();
     builder.Services.AddScoped<IVolunteerListingService, VolunteerListingService>();
+    builder.Services.AddScoped<IRecipientListingService, RecipientListingService>();
 
     builder.Services.AddSingleton<IFileStorage>(_ => new LocalFileStorage(uploadsPath, "/uploads"));
 

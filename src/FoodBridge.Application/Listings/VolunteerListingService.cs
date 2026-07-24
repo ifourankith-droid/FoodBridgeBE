@@ -120,7 +120,7 @@ public sealed class VolunteerListingService : IVolunteerListingService
 
         if (listing.RecipientId is null)
         {
-            listing.RecipientId = await _recipientMatcher.FindNearestAvailableRecipientAsync(listing.Latitude, listing.Longitude, cancellationToken);
+            listing.RecipientId = await _recipientMatcher.FindNearestAvailableRecipientAsync(listing.Latitude, listing.Longitude, cancellationToken: cancellationToken);
         }
 
         var now = _clock.UtcNow;

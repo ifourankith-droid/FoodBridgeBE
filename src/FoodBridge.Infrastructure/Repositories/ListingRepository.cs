@@ -210,4 +210,91 @@ OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;";
 
         return (items, totalCount);
     }
+
+    public Task<(IReadOnlyList<Listing> Items, int TotalCount)> GetIncomingForRecipientAsync(Guid recipientId, int page, int pageSize, CancellationToken cancellationToken = default) =>
+        GetByRecipientAndStatusAsync(recipientId, ListingStatus.PickedUp, page, pageSize, cancellationToken);
+
+    public Task<(IReadOnlyList<Listing> Items, int TotalCount)> GetHistoryForRecipientAsync(Guid recipientId, int page, int pageSize, CancellationToken cancellationToken = default) =>
+        GetByRecipientAndStatusAsync(recipientId, ListingStatus.Confirmed, page, pageSize, cancellationToken);
+
+    private async Task<(IReadOnlyList<Listing> Items, int TotalCount)> GetByRecipientAndStatusAsync(Guid recipientId, ListingStatus status, int page, int pageSize, CancellationToken cancellationToken)
+    {
+        using var connection = ConnectionFactory.CreateConnection();
+
+        const string whereSql = " WHERE RecipientId = @RecipientId AND Status = @Status AND IsDeleted = 0";
+        var parameters = new { RecipientId = recipientId, Status = (byte)status, Offset = (page - 1) * pageSize, PageSize = pageSize };
+
+        var totalCount = await connection.ExecuteScalarAsync<int>(new CommandDefinition("SELECT COUNT(*) FROM Listings" + whereSql, parameters, cancellationToken: cancellationToken));
+
+        var itemsCommand = new CommandDefinition(
+            SelectSql + whereSql + " ORDER BY UpdatedAtUtc DESC OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY",
+            parameters,
+            cancellationToken: cancellationToken);
+        var items = (await connection.QueryAsync<Listing>(itemsCommand)).ToList();
+
+        return (items, totalCount);
+    }
+
+    public async Task AddTimelineEventAsync(ListingTimelineEvent timelineEvent, CancellationToken cancellationToken = default)
+    {
+        const string sql = @"
+INSERT INTO ListingTimeline (ListingId, FromStatus, ToStatus, ActorUserId, Note, PhotoUrl, CreatedAtUtc)
+VALUES (@ListingId, @FromStatus, @ToStatus, @ActorUserId, @Note, @PhotoUrl, @CreatedAtUtc);";
+
+        using var connection = ConnectionFactory.CreateConnection();
+        await connection.ExecuteAsync(new CommandDefinition(sql, timelineEvent, cancellationToken: cancellationToken));
+    }
+
+    public Task ReassignRecipientAsync(Listing listing, ListingTimelineEvent timelineEvent, CancellationToken cancellationToken = default) =>
+        ExecuteInTransactionAsync(async (connection, transaction) =>
+        {
+            const string updateSql = "UPDATE Listings SET RecipientId = @RecipientId, UpdatedAtUtc = @UpdatedAtUtc WHERE Id = @Id AND IsDeleted = 0;";
+            const string insertTimelineSql = @"
+INSERT INTO ListingTimeline (ListingId, FromStatus, ToStatus, ActorUserId, Note, PhotoUrl, CreatedAtUtc)
+VALUES (@ListingId, @FromStatus, @ToStatus, @ActorUserId, @Note, @PhotoUrl, @CreatedAtUtc);";
+
+            await connection.ExecuteAsync(new CommandDefinition(updateSql, listing, transaction, cancellationToken: cancellationToken));
+            await connection.ExecuteAsync(new CommandDefinition(insertTimelineSql, timelineEvent, transaction, cancellationToken: cancellationToken));
+        }, cancellationToken);
+
+    public Task ConfirmReceiptAsync(Listing listing, ListingTimelineEvent timelineEvent, VolunteerPoint volunteerPoint, Certificate certificate, IReadOnlyList<Notification> notifications, CancellationToken cancellationToken = default) =>
+        ExecuteInTransactionAsync(async (connection, transaction) =>
+        {
+            const string updateListingSql = "UPDATE Listings SET Status = @Status, UpdatedAtUtc = @UpdatedAtUtc WHERE Id = @Id AND IsDeleted = 0;";
+            await connection.ExecuteAsync(new CommandDefinition(updateListingSql, listing, transaction, cancellationToken: cancellationToken));
+
+            const string insertTimelineSql = @"
+INSERT INTO ListingTimeline (ListingId, FromStatus, ToStatus, ActorUserId, Note, PhotoUrl, CreatedAtUtc)
+VALUES (@ListingId, @FromStatus, @ToStatus, @ActorUserId, @Note, @PhotoUrl, @CreatedAtUtc);";
+            await connection.ExecuteAsync(new CommandDefinition(insertTimelineSql, timelineEvent, transaction, cancellationToken: cancellationToken));
+
+            const string insertPointsSql = @"
+INSERT INTO VolunteerPoints (VolunteerId, ListingId, Points, Reason, CreatedAtUtc, UpdatedAtUtc)
+VALUES (@VolunteerId, @ListingId, @Points, @Reason, @CreatedAtUtc, @UpdatedAtUtc);";
+            await connection.ExecuteAsync(new CommandDefinition(insertPointsSql, volunteerPoint, transaction, cancellationToken: cancellationToken));
+
+            // Sequence number is a same-transaction COUNT, not a SQL Server SEQUENCE — a
+            // simple choice with a small collision window under true concurrency; see the
+            // decisions log.
+            var monthPrefix = $"FB-{timelineEvent.CreatedAtUtc:yyyyMM}-";
+            var countThisMonth = await connection.ExecuteScalarAsync<int>(new CommandDefinition(
+                "SELECT COUNT(*) FROM Certificates WHERE CertificateNumber LIKE @Prefix + '%';",
+                new { Prefix = monthPrefix },
+                transaction,
+                cancellationToken: cancellationToken));
+            certificate.CertificateNumber = SlugHelper.BuildCertificateNumber(timelineEvent.CreatedAtUtc, countThisMonth + 1);
+
+            const string insertCertificateSql = @"
+INSERT INTO Certificates (CertificateNumber, DonorId, ListingId, MealsCount, IssuedAtUtc, PdfUrl, CreatedAtUtc, UpdatedAtUtc)
+VALUES (@CertificateNumber, @DonorId, @ListingId, @MealsCount, @IssuedAtUtc, @PdfUrl, @CreatedAtUtc, @UpdatedAtUtc);";
+            await connection.ExecuteAsync(new CommandDefinition(insertCertificateSql, certificate, transaction, cancellationToken: cancellationToken));
+
+            const string insertNotificationSql = @"
+INSERT INTO Notifications (UserId, Type, Title, Body, PayloadJson, IsRead, CreatedAtUtc, UpdatedAtUtc)
+VALUES (@UserId, @Type, @Title, @Body, @PayloadJson, @IsRead, @CreatedAtUtc, @UpdatedAtUtc);";
+            foreach (var notification in notifications)
+            {
+                await connection.ExecuteAsync(new CommandDefinition(insertNotificationSql, notification, transaction, cancellationToken: cancellationToken));
+            }
+        }, cancellationToken);
 }

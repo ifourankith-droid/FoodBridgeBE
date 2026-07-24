@@ -11,6 +11,6 @@ public sealed class RecipientMatcher : IRecipientMatcher
         _recipientReader = recipientReader;
     }
 
-    public Task<Guid?> FindNearestAvailableRecipientAsync(decimal latitude, decimal longitude, CancellationToken cancellationToken = default) =>
-        _recipientReader.FindNearestAvailableRecipientIdAsync(latitude, longitude, cancellationToken);
+    public Task<Guid?> FindNearestAvailableRecipientAsync(decimal latitude, decimal longitude, IReadOnlyCollection<Guid>? excludeRecipientIds = null, CancellationToken cancellationToken = default) =>
+        _recipientReader.FindNearestAvailableRecipientIdAsync(latitude, longitude, excludeRecipientIds, cancellationToken);
 }

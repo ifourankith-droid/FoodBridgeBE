@@ -15,6 +15,7 @@ See `docs/ARCHITECTURE.md` § Data dictionary → Enum value tables (Role, Accou
 - [Users](#users) — get/update profile, availability, avatar
 - [Listings — Donor](#listings--donor) — create, list, detail, update, cancel, image upload
 - [Listings — Volunteer](#listings--volunteer) — nearby, claim, confirm-pickup, confirm-delivery
+- [Listings — Recipient](#listings--recipient) — incoming, accept, reject, confirm-receipt, history
 
 ## Auth
 All 5 endpoints route under `/api/auth`. None require a role policy; `logout` and `me` require any authenticated JWT (`[Authorize]`).
@@ -301,6 +302,41 @@ Success (200): same shape, `status: "Delivered"`, new timeline entry with `photo
 Errors: 403 — not the assigned volunteer; 422 — `"Cannot confirm delivery before a recipient has been matched."` (no `recipientId` yet), `photo` missing/wrong type/too large, or the listing isn't currently `PickedUp`; 400 — no file attached.
 
 ## Listings — Recipient
+All 5 endpoints route under `/api/listings` and require `[Authorize(Policy = "RecipientOnly")]`. `accept`/`reject`/`confirm-receipt` additionally check that the caller is the listing's current `RecipientId` (403 otherwise, enforced in `RecipientListingService`) — once a recipient rejects, they're no longer matched and lose access to that listing.
+
+### GET /api/listings/incoming
+Lists listings currently matched to the caller and awaiting an accept/reject decision (`Status = PickedUp`, `RecipientId = caller`). Query params: `page` (default 1), `pageSize` (default 20, max 100).
+
+Success (200) — `PagedResponse<ListingSummaryResponse>` (same item shape as the Donor list endpoint).
+
+### POST /api/listings/{id}/accept
+Acknowledges the incoming match. Doesn't change `Status` — just records a timeline entry.
+
+No request body. Success (200): a `ListingResponse`, `status` unchanged (`"PickedUp"`). Errors: 403 — not the matched recipient; 422 — `"Only an in-transit listing awaiting your decision can be accepted or rejected."` (e.g. already rejected, or not yet picked up).
+
+### POST /api/listings/{id}/reject
+Declines the match. Auto-reassigns to the nearest other available Verified recipient via `RecipientMatcher`, excluding every recipient who has already rejected this same listing (not just the current one — otherwise two recipients could reassign back and forth forever). `Status` stays `"PickedUp"` throughout.
+
+No request body. Success (200): a `ListingResponse` with `recipientId` set to the new match, or `null` if none is currently available — check the last `timeline` entry's `note` for which outcome occurred (`"Reassigned to another available recipient."` vs `"No other recipient is currently available."`). Errors: same as `accept`.
+
+### POST /api/listings/{id}/confirm-receipt
+Confirms receipt (`Delivered → Confirmed`). Atomically (one transaction): inserts a timeline event, awards the volunteer `quantityMeals × 1` points, issues a donor certificate (`CertificateNumber` format `FB-{yyyyMM}-{seq:D5}`; `PdfUrl` stays null until Phase 8 renders it), and creates one notification each for the donor and the volunteer.
+
+No request body. Success (200):
+```json
+{
+  "success": true, "message": "Receipt confirmed successfully.", "traceId": "...",
+  "data": {
+    "listing": { "...": "same shape as GET /api/listings/{id}, status: \"Confirmed\"" },
+    "certificateNumber": "FB-202607-00001",
+    "pointsAwarded": 50
+  }
+}
+```
+Errors: 403 — not the matched recipient; 422 — the listing isn't currently `Delivered` (`"Cannot transition listing from '{status}' to 'Confirmed'."`), including on a repeat call once already `Confirmed`.
+
+### GET /api/listings/history
+Lists the caller's past confirmed receipts (`Status = Confirmed`, `RecipientId = caller`). Same query params and response shape as `incoming`.
 
 ## Notifications & real-time (SignalR contract)
 
