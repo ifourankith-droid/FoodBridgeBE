@@ -81,15 +81,16 @@ Phases run one at a time, in order. A phase is not "done" until its acceptance c
 - [x] Bonus verified live: wrong-recipient (already reassigned away) on any action → 403; `confirm-receipt` before `Delivered` → 422; double `confirm-receipt` → 422; `accept`/`reject` don't change `Status`; `history` shows confirmed receipts.
 
 ## Phase 7 — Real-time: SignalR notifications + tracking + expiry job
-- [ ] `INotificationDispatcher` + `SignalRNotificationDispatcher`.
-- [ ] `NotificationsHub`, `TrackingHub`.
-- [ ] REST fallbacks: track, notifications list/read, geocode.
-- [ ] `ListingExpiryBackgroundService`.
-- [ ] SignalR contract documented.
+- [x] `INotificationDispatcher` + `SignalRNotificationDispatcher`.
+- [x] `NotificationsHub`, `TrackingHub`.
+- [x] REST fallbacks: track, notifications list/read, geocode.
+- [x] `ListingExpiryBackgroundService`.
+- [x] SignalR contract documented.
 
 **Acceptance criteria**
-- [ ] Live notification pops across two tabs.
-- [ ] Expiry job flips a past-deadline seed listing within a minute of startup.
+- [x] Live notification pops across two tabs — verified with a real two-connection SignalR client harness (not just code review): donor and volunteer each held an open `NotificationsHub` connection, `confirm-receipt` fired, and each received *only* their own notification instantly over the wire (donor: `DonationConfirmed`; volunteer: `PointsAwarded`).
+- [x] Expiry job flips a past-deadline seed listing within a minute of startup — verified live: 3 Pending-but-overdue listings (both a seed row and a leftover test listing) flipped to `Expired` immediately on startup (well under a minute), with `ListingTimeline.ActorUserId = NULL` and the correct system note.
+- [x] Bonus verified live via the same SignalR harness: `TrackingHub.UpdateLocation` (volunteer) → `LocationUpdated` pushed live to the donor's joined tracking group; the REST `GET .../track` fallback returned the identical stored location afterward; an uninvolved user hitting `track` got 403; `GET/PATCH /api/notifications` REST fallback works; `GET /api/geocode` resolves known Ahmedabad localities and falls back to an approximate city-center marker for unknown addresses.
 
 ## Phase 8 — Certificates, Leaderboard, Reports (8 endpoints)
 - [ ] `IPdfGenerator` + `QuestPdfCertificateGenerator`.

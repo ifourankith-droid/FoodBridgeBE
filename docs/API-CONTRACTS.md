@@ -16,6 +16,7 @@ See `docs/ARCHITECTURE.md` § Data dictionary → Enum value tables (Role, Accou
 - [Listings — Donor](#listings--donor) — create, list, detail, update, cancel, image upload
 - [Listings — Volunteer](#listings--volunteer) — nearby, claim, confirm-pickup, confirm-delivery
 - [Listings — Recipient](#listings--recipient) — incoming, accept, reject, confirm-receipt, history
+- [Notifications & real-time (SignalR contract)](#notifications--real-time-signalr-contract) — notifications list/read, tracking, geocode
 
 ## Auth
 All 5 endpoints route under `/api/auth`. None require a role policy; `logout` and `me` require any authenticated JWT (`[Authorize]`).
@@ -339,6 +340,46 @@ Errors: 403 — not the matched recipient; 422 — the listing isn't currently `
 Lists the caller's past confirmed receipts (`Status = Confirmed`, `RecipientId = caller`). Same query params and response shape as `incoming`.
 
 ## Notifications & real-time (SignalR contract)
+Live delivery is via SignalR (`/hubs/notifications`, `/hubs/tracking`) — full event/method contract in `docs/ARCHITECTURE.md` § Real-time (SignalR) contract, including the `access_token` query-string auth required for the hub connection itself. The endpoints below are the REST fallbacks for clients that aren't (or can't stay) connected.
+
+### GET /api/notifications
+`[Authorize]`, any role. Lists the caller's own notifications, optionally filtered by read status.
+
+Query params: `isRead` (optional bool), `page` (default 1), `pageSize` (default 20, max 100).
+
+Success (200) — `PagedResponse<NotificationResponse>`:
+```json
+{
+  "page": 1, "pageSize": 20, "totalCount": 1, "totalPages": 1,
+  "success": true, "message": "Success", "traceId": "...",
+  "data": [ { "id": "...", "type": "DonationConfirmed", "title": "Donation confirmed", "body": "Your donation '...' was received and confirmed. A certificate has been issued.", "payloadJson": null, "isRead": false, "createdAtUtc": "..." } ]
+}
+```
+
+### PATCH /api/notifications/{id}/read
+`[Authorize]`, self only. Marks a notification read (idempotent — re-marking an already-read one just returns it unchanged).
+
+No request body. Success (200): the updated `NotificationResponse` (`isRead: true`). 403 — not the notification's owner; 404 — no such notification.
+
+### GET /api/listings/{id}/track
+`[Authorize]`. REST fallback for `TrackingHub`'s live position updates. Donor, assigned volunteer, or matched recipient only.
+
+Success (200):
+```json
+{ "success": true, "message": "Success", "traceId": "...", "data": { "listingId": "...", "latitude": 23.03, "longitude": 72.56, "reportedAtUtc": "..." } }
+```
+`data` is `null` if the volunteer hasn't reported a position yet (still 200, `message: "No location has been reported for this listing yet."`). 403 — caller isn't the donor/volunteer/recipient of this listing. 404 — no such listing.
+
+### GET /api/geocode
+No authentication required (useful before registration completes). Resolves a free-form address to approximate coordinates.
+
+Query params: `address` (required).
+
+Success (200):
+```json
+{ "success": true, "message": "Success", "traceId": "...", "data": { "latitude": 23.0089, "longitude": 72.5601, "isApproximate": false } }
+```
+`isApproximate: true` means the address wasn't recognized and the response falls back to the Ahmedabad city center. 422 — `address` missing/blank.
 
 ## Certificates, Leaderboard, Reports
 

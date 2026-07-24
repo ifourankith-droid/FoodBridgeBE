@@ -254,3 +254,32 @@ Authorization: Bearer PASTE_RECIPIENT_JWT_HERE
 ### Receipt history (past confirmed receipts)
 GET {{baseUrl}}/api/listings/history?page=1&pageSize=20
 Authorization: Bearer PASTE_RECIPIENT_JWT_HERE
+
+
+### --- Notifications & real-time (REST fallbacks) ---
+### Live delivery is via SignalR: /hubs/notifications, /hubs/tracking (see docs/ARCHITECTURE.md
+### for the full contract) — connect with ?access_token=<JWT> on the hub URL. These are the
+### REST fallbacks for clients that aren't connected.
+
+### My notifications
+GET {{baseUrl}}/api/notifications?page=1&pageSize=20
+Authorization: Bearer PASTE_JWT_HERE
+
+
+### My unread notifications only
+GET {{baseUrl}}/api/notifications?isRead=false
+Authorization: Bearer PASTE_JWT_HERE
+
+
+### Mark a notification read
+PATCH {{baseUrl}}/api/notifications/PASTE_NOTIFICATION_ID_HERE/read
+Authorization: Bearer PASTE_JWT_HERE
+
+
+### Track a listing's last-known volunteer location (donor/volunteer/recipient only)
+GET {{baseUrl}}/api/listings/{{listingId}}/track
+Authorization: Bearer PASTE_JWT_HERE
+
+
+### Geocode an address (no auth required)
+GET {{baseUrl}}/api/geocode?address=Paldi, Ahmedabad

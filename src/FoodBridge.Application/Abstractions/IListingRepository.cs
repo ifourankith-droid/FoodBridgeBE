@@ -59,4 +59,11 @@ public interface IListingRepository
     /// <paramref name="notifications"/> — all in one transaction (all-or-nothing).
     /// </summary>
     Task ConfirmReceiptAsync(Listing listing, ListingTimelineEvent timelineEvent, VolunteerPoint volunteerPoint, Certificate certificate, IReadOnlyList<Notification> notifications, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Atomically flips every Pending listing whose PickupDeadlineUtc has passed to
+    /// Expired and inserts a system timeline event (ActorUserId null) for each. Returns
+    /// the ids that were expired, for logging.
+    /// </summary>
+    Task<IReadOnlyList<Guid>> ExpirePastDeadlineListingsAsync(DateTime nowUtc, CancellationToken cancellationToken = default);
 }

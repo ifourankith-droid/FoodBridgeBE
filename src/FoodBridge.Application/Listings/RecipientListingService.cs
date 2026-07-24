@@ -21,13 +21,20 @@ public sealed class RecipientListingService : IRecipientListingService
 
     private readonly IListingRepository _listingRepository;
     private readonly IRecipientMatcher _recipientMatcher;
+    private readonly INotificationDispatcher _notificationDispatcher;
     private readonly ICurrentUser _currentUser;
     private readonly IClock _clock;
 
-    public RecipientListingService(IListingRepository listingRepository, IRecipientMatcher recipientMatcher, ICurrentUser currentUser, IClock clock)
+    public RecipientListingService(
+        IListingRepository listingRepository,
+        IRecipientMatcher recipientMatcher,
+        INotificationDispatcher notificationDispatcher,
+        ICurrentUser currentUser,
+        IClock clock)
     {
         _listingRepository = listingRepository;
         _recipientMatcher = recipientMatcher;
+        _notificationDispatcher = notificationDispatcher;
         _currentUser = currentUser;
         _clock = clock;
     }
@@ -154,6 +161,13 @@ public sealed class RecipientListingService : IRecipientListingService
 
         await _listingRepository.ConfirmReceiptAsync(listing, timelineEvent, volunteerPoint, certificate, notifications, cancellationToken);
 
+        // Best-effort live push, after the atomic write has already committed — a
+        // dispatch failure (e.g. nobody connected) must never roll back the receipt.
+        foreach (var notification in notifications)
+        {
+            await _notificationDispatcher.DispatchAsync(notification, cancellationToken);
+        }
+
         var response = new ConfirmReceiptResponse(await BuildResponseAsync(listing, cancellationToken), certificate.CertificateNumber, points);
         return Result.Success(response, "Receipt confirmed successfully.");
     }
@@ -176,8 +190,8 @@ public sealed class RecipientListingService : IRecipientListingService
     {
         var timeline = await _listingRepository.GetTimelineAsync(listing.Id, cancellationToken);
         var excluded = timeline
-            .Where(t => t.Note is not null && t.Note.StartsWith(RejectedNotePrefix, StringComparison.Ordinal))
-            .Select(t => t.ActorUserId)
+            .Where(t => t.ActorUserId.HasValue && t.Note is not null && t.Note.StartsWith(RejectedNotePrefix, StringComparison.Ordinal))
+            .Select(t => t.ActorUserId!.Value)
             .ToHashSet();
         excluded.Add(listing.RecipientId!.Value);
         return excluded;

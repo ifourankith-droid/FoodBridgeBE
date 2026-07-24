@@ -291,10 +291,49 @@ VALUES (@CertificateNumber, @DonorId, @ListingId, @MealsCount, @IssuedAtUtc, @Pd
 
             const string insertNotificationSql = @"
 INSERT INTO Notifications (UserId, Type, Title, Body, PayloadJson, IsRead, CreatedAtUtc, UpdatedAtUtc)
+OUTPUT INSERTED.Id
 VALUES (@UserId, @Type, @Title, @Body, @PayloadJson, @IsRead, @CreatedAtUtc, @UpdatedAtUtc);";
             foreach (var notification in notifications)
             {
-                await connection.ExecuteAsync(new CommandDefinition(insertNotificationSql, notification, transaction, cancellationToken: cancellationToken));
+                notification.Id = await connection.ExecuteScalarAsync<Guid>(new CommandDefinition(insertNotificationSql, notification, transaction, cancellationToken: cancellationToken));
             }
+        }, cancellationToken);
+
+    public Task<IReadOnlyList<Guid>> ExpirePastDeadlineListingsAsync(DateTime nowUtc, CancellationToken cancellationToken = default) =>
+        ExecuteInTransactionAsync(async (connection, transaction) =>
+        {
+            const string updateSql = @"
+UPDATE Listings
+SET Status = @ExpiredStatus, UpdatedAtUtc = @NowUtc
+OUTPUT INSERTED.Id
+WHERE Status = @PendingStatus AND PickupDeadlineUtc <= @NowUtc AND IsDeleted = 0;";
+
+            var expiredIds = (await connection.QueryAsync<Guid>(new CommandDefinition(
+                updateSql,
+                new { ExpiredStatus = (byte)ListingStatus.Expired, PendingStatus = (byte)ListingStatus.Pending, NowUtc = nowUtc },
+                transaction,
+                cancellationToken: cancellationToken))).ToList();
+
+            if (expiredIds.Count == 0)
+            {
+                return (IReadOnlyList<Guid>)expiredIds;
+            }
+
+            const string insertTimelineSql = @"
+INSERT INTO ListingTimeline (ListingId, FromStatus, ToStatus, ActorUserId, Note, PhotoUrl, CreatedAtUtc)
+VALUES (@ListingId, @FromStatus, @ToStatus, NULL, @Note, NULL, @CreatedAtUtc);";
+
+            var timelineRows = expiredIds.Select(id => new
+            {
+                ListingId = id,
+                FromStatus = (byte)ListingStatus.Pending,
+                ToStatus = (byte)ListingStatus.Expired,
+                Note = "Listing expired automatically (pickup deadline passed).",
+                CreatedAtUtc = nowUtc,
+            });
+
+            await connection.ExecuteAsync(new CommandDefinition(insertTimelineSql, timelineRows, transaction, cancellationToken: cancellationToken));
+
+            return (IReadOnlyList<Guid>)expiredIds;
         }, cancellationToken);
 }

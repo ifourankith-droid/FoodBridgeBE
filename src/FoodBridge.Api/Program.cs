@@ -3,18 +3,26 @@ using System.Text;
 using FluentMigrator.Runner;
 using FluentMigrator.Runner.Initialization;
 using FluentValidation;
+using FoodBridge.Api.BackgroundServices;
 using FoodBridge.Api.Common;
+using FoodBridge.Api.Hubs;
 using FoodBridge.Api.Middleware;
+using FoodBridge.Api.Notifications;
 using FoodBridge.Application.Abstractions;
 using FoodBridge.Application.Auth;
 using FoodBridge.Application.Common;
+using FoodBridge.Application.Geocoding;
 using FoodBridge.Application.Listings;
+using FoodBridge.Application.Notifications;
+using FoodBridge.Application.Tracking;
 using FoodBridge.Application.Users;
 using FoodBridge.Domain.Enums;
 using FoodBridge.Infrastructure.Auth;
 using FoodBridge.Infrastructure.Common;
+using FoodBridge.Infrastructure.Geocoding;
 using FoodBridge.Infrastructure.Repositories;
 using FoodBridge.Infrastructure.Storage;
+using FoodBridge.Infrastructure.Tracking;
 using FoodBridge.Migrations;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
@@ -45,6 +53,7 @@ try
         .Enrich.FromLogContext());
 
     builder.Services.AddControllers();
+    builder.Services.AddSignalR();
 
     builder.Services.AddValidatorsFromAssembly(typeof(AuthService).Assembly);
 
@@ -114,6 +123,18 @@ try
     builder.Services.AddScoped<IVolunteerListingService, VolunteerListingService>();
     builder.Services.AddScoped<IRecipientListingService, RecipientListingService>();
 
+    builder.Services.AddScoped<INotificationRepository, NotificationRepository>();
+    builder.Services.AddScoped<INotificationService, NotificationService>();
+    builder.Services.AddScoped<INotificationDispatcher, SignalRNotificationDispatcher>();
+
+    builder.Services.AddSingleton<ITrackingStore, InMemoryTrackingStore>();
+    builder.Services.AddScoped<ITrackingService, TrackingService>();
+
+    builder.Services.AddScoped<IGeocodingProvider, MockGeocodingProvider>();
+    builder.Services.AddScoped<IGeocodingService, GeocodingService>();
+
+    builder.Services.AddHostedService<ListingExpiryBackgroundService>();
+
     builder.Services.AddSingleton<IFileStorage>(_ => new LocalFileStorage(uploadsPath, "/uploads"));
 
     builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection(JwtSettings.SectionName));
@@ -148,6 +169,19 @@ try
 
             options.Events = new JwtBearerEvents
             {
+                // SignalR's WebSocket/SSE transports can't set an Authorization header, so
+                // the JS client sends the token as a query-string parameter instead; only
+                // honor that fallback for the hub paths themselves, never for plain REST.
+                OnMessageReceived = context =>
+                {
+                    var accessToken = context.Request.Query["access_token"];
+                    if (!string.IsNullOrEmpty(accessToken) && context.HttpContext.Request.Path.StartsWithSegments("/hubs"))
+                    {
+                        context.Token = accessToken;
+                    }
+
+                    return Task.CompletedTask;
+                },
                 OnTokenValidated = context =>
                 {
                     var jti = context.Principal?.Claims.FirstOrDefault(c => c.Type == "jti")?.Value;
@@ -196,6 +230,8 @@ try
     app.UseAuthentication();
     app.UseAuthorization();
     app.MapControllers();
+    app.MapHub<NotificationsHub>("/hubs/notifications");
+    app.MapHub<TrackingHub>("/hubs/tracking");
 
     if (app.Configuration.GetValue<bool>("Database:MigrateOnStartup"))
     {
