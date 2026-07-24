@@ -103,10 +103,12 @@ Phases run one at a time, in order. A phase is not "done" until its acceptance c
 - [x] Bonus verified live: PdfUrl starts null and gets populated on first render only; cross-donor certificate access → 403; wrong-role report access (Donor → `/reports/volunteer`) → 403.
 
 ## Phase 9 — Admin module (8 endpoints)
-- [ ] Dashboard stats, listings/accounts management, verify/suspend, disputes, platform reports.
+- [x] Dashboard stats, listings/accounts management, verify/suspend, disputes (list/resolve), platform reports. (5 + 2 + 1 = 8; see `docs/ARCHITECTURE.md` decisions log for the exact breakdown and the "raise a dispute" scope note.)
 
 **Acceptance criteria**
-- [ ] Non-admin JWT gets 403 on every admin route. Verifying a Pending recipient makes them eligible for `RecipientMatcher`.
+- [x] Non-admin JWT gets 403 on every admin route — verified live: a Donor JWT swept across all 8 endpoints (`dashboard`, `listings`, `accounts`, `verify`, `suspend`, `disputes` list/resolve, `reports/platform`) got 403 on every single one.
+- [x] Verifying a Pending recipient makes them eligible for `RecipientMatcher` — verified live with a real before/after test: created a listing next to a genuinely Pending recipient (`Test Household`, seeded from earlier Phase 2 testing) → matched to a farther-away *Verified* recipient instead (correctly excluded); Admin verified `Test Household`; repeated the identical scenario → matched to `Test Household` this time.
+- [x] Bonus verified live: dashboard stats numerically correct (10 users, 17 listings, 67 meals donated, 3 certificates, etc.); suspending an Admin account or the caller's own account is blocked (422); a real dispute row was listed, resolved, and a second resolve attempt correctly blocked (422).
 
 ## Phase 10 — Documentation, hardening, demo polish
 - [ ] Finish `docs/ARCHITECTURE.md` and `docs/API-CONTRACTS.md`.

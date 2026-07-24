@@ -38,4 +38,11 @@ public sealed class ReportService : IReportService
         var byMonth = await _reportsReader.GetRecipientMealsByMonthAsync(recipientId, cancellationToken);
         return Result.Success(new RecipientReportResponse(totalMealsReceived, totalDeliveriesReceived, byMonth));
     }
+
+    public async Task<Result<PlatformReportResponse>> GetPlatformReportAsync(CancellationToken cancellationToken = default)
+    {
+        var (totalMealsDonated, totalDeliveries, totalCertificates, totalUsers) = await _reportsReader.GetPlatformSummaryAsync(cancellationToken);
+        var byMonth = await _reportsReader.GetPlatformMealsByMonthAsync(cancellationToken);
+        return Result.Success(new PlatformReportResponse(totalMealsDonated, totalDeliveries, totalCertificates, totalUsers, byMonth));
+    }
 }

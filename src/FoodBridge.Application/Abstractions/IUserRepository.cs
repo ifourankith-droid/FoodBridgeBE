@@ -1,4 +1,5 @@
 using FoodBridge.Domain.Entities;
+using FoodBridge.Domain.Enums;
 
 namespace FoodBridge.Application.Abstractions;
 
@@ -15,4 +16,7 @@ public interface IUserRepository
     Task UpdateAvailabilityAsync(Guid id, bool isAvailable, CancellationToken cancellationToken = default);
 
     Task UpdateAvatarUrlAsync(Guid id, string avatarUrl, CancellationToken cancellationToken = default);
+
+    /// <summary>Admin-only write (verify/suspend) — the restriction lives in the calling service, not here.</summary>
+    Task UpdateAccountStatusAsync(Guid id, AccountStatus accountStatus, CancellationToken cancellationToken = default);
 }

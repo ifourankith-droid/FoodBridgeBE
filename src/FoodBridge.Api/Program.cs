@@ -9,9 +9,11 @@ using FoodBridge.Api.Hubs;
 using FoodBridge.Api.Middleware;
 using FoodBridge.Api.Notifications;
 using FoodBridge.Application.Abstractions;
+using FoodBridge.Application.Admin;
 using FoodBridge.Application.Auth;
 using FoodBridge.Application.Certificates;
 using FoodBridge.Application.Common;
+using FoodBridge.Application.Disputes;
 using FoodBridge.Application.Geocoding;
 using FoodBridge.Application.Leaderboard;
 using FoodBridge.Application.Listings;
@@ -151,6 +153,12 @@ try
 
     builder.Services.AddScoped<IReportsReader, ReportsReader>();
     builder.Services.AddScoped<IReportService, ReportService>();
+
+    builder.Services.AddScoped<IAdminRepository, AdminRepository>();
+    builder.Services.AddScoped<IAdminService, AdminService>();
+
+    builder.Services.AddScoped<IDisputeRepository, DisputeRepository>();
+    builder.Services.AddScoped<IDisputeService, DisputeService>();
 
     builder.Services.AddSingleton<IFileStorage>(_ => new LocalFileStorage(uploadsPath, "/uploads"));
 

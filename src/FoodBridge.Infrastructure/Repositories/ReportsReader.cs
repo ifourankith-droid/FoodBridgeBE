@@ -91,4 +91,32 @@ ORDER BY Period;";
         var command = new CommandDefinition(sql, new { RecipientId = recipientId, ConfirmedStatus = (byte)ListingStatus.Confirmed }, cancellationToken: cancellationToken);
         return (await connection.QueryAsync<ChartPoint>(command)).ToList();
     }
+
+    public async Task<(int TotalMealsDonated, int TotalDeliveries, int TotalCertificates, int TotalUsers)> GetPlatformSummaryAsync(CancellationToken cancellationToken = default)
+    {
+        using var connection = ConnectionFactory.CreateConnection();
+
+        var totalMealsDonated = await connection.ExecuteScalarAsync<int>(new CommandDefinition(
+            "SELECT COALESCE(SUM(MealsCount), 0) FROM Certificates;", cancellationToken: cancellationToken));
+        var totalCertificates = await connection.ExecuteScalarAsync<int>(new CommandDefinition(
+            "SELECT COUNT(*) FROM Certificates;", cancellationToken: cancellationToken));
+        var totalDeliveries = await connection.ExecuteScalarAsync<int>(new CommandDefinition(
+            "SELECT COUNT(*) FROM VolunteerPoints;", cancellationToken: cancellationToken));
+        var totalUsers = await connection.ExecuteScalarAsync<int>(new CommandDefinition(
+            "SELECT COUNT(*) FROM Users WHERE IsDeleted = 0;", cancellationToken: cancellationToken));
+
+        return (totalMealsDonated, totalDeliveries, totalCertificates, totalUsers);
+    }
+
+    public async Task<IReadOnlyList<ChartPoint>> GetPlatformMealsByMonthAsync(CancellationToken cancellationToken = default)
+    {
+        using var connection = ConnectionFactory.CreateConnection();
+        const string sql = @"
+SELECT FORMAT(IssuedAtUtc, 'yyyy-MM') AS Period, SUM(MealsCount) AS Value
+FROM Certificates
+GROUP BY FORMAT(IssuedAtUtc, 'yyyy-MM')
+ORDER BY Period;";
+        var command = new CommandDefinition(sql, cancellationToken: cancellationToken);
+        return (await connection.QueryAsync<ChartPoint>(command)).ToList();
+    }
 }

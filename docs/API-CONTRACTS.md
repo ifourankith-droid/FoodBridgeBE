@@ -18,6 +18,7 @@ See `docs/ARCHITECTURE.md` § Data dictionary → Enum value tables (Role, Accou
 - [Listings — Recipient](#listings--recipient) — incoming, accept, reject, confirm-receipt, history
 - [Notifications & real-time (SignalR contract)](#notifications--real-time-signalr-contract) — notifications list/read, tracking, geocode
 - [Certificates, Leaderboard, Reports](#certificates-leaderboard-reports) — certificate list/detail/pdf, leaderboard (+ my-rank), donor/volunteer/recipient reports
+- [Admin](#admin) — dashboard, listings/accounts browse, verify/suspend, disputes, platform report
 
 ## Auth
 All 5 endpoints route under `/api/auth`. None require a role policy; `logout` and `me` require any authenticated JWT (`[Authorize]`).
@@ -465,6 +466,96 @@ Success (200):
 All three report `*ByMonth` series use the same `{ period: "yyyy-MM", value: number }` shape — directly bindable to a chart with no client-side reshaping.
 
 ## Admin
+All 8 endpoints require `[Authorize(Policy = "AdminOnly")]` — any non-Admin role gets 403 on every one (verified live with a real Donor JWT swept across all 8). `AdminController`'s browse/moderation actions are nested under `/api/admin`; `DisputesController` is a flat `/api/disputes` resource (same policy); the platform report lives on the existing `ReportsController` (`GET /api/reports/platform`) alongside the donor/volunteer/recipient reports from the previous section.
+
+### GET /api/admin/dashboard
+At-a-glance platform counts.
+
+Success (200):
+```json
+{
+  "success": true, "message": "Success", "traceId": "...",
+  "data": {
+    "totalDonors": 2, "totalVolunteers": 4, "totalRecipients": 3, "pendingRecipients": 1,
+    "totalListings": 17, "pendingListings": 0, "activeListings": 8, "confirmedListings": 4,
+    "totalMealsDonated": 67, "totalCertificatesIssued": 3, "totalVolunteerPointsAwarded": 67,
+    "openDisputes": 0, "resolvedDisputes": 0
+  }
+}
+```
+`activeListings` counts `Claimed`+`PickedUp`+`Delivered` (in flight, not yet `Confirmed`).
+
+### GET /api/admin/listings
+All listings platform-wide (any donor), with the donor's name attached — unlike the donor's own `GET /api/listings`, which is implicitly self-scoped.
+
+Query params: `status` (optional, a `Listings.Status` enum name), `page` (default 1), `pageSize` (default 20, max 100).
+
+Success (200) — `PagedResponse<AdminListingSummaryResponse>`:
+```json
+{
+  "page": 1, "pageSize": 20, "totalCount": 17, "totalPages": 1,
+  "success": true, "message": "Success", "traceId": "...",
+  "data": [ { "id": "...", "title": "...", "status": "Confirmed", "donorId": "...", "donorName": "Green Leaf Restaurant", "volunteerId": "...", "recipientId": "...", "quantityMeals": 5, "pickupDeadlineUtc": "...", "createdAtUtc": "..." } ]
+}
+```
+
+### GET /api/admin/accounts
+All user accounts platform-wide.
+
+Query params: `role` (optional, a `Users.Role` enum name), `accountStatus` (optional, a `Users.AccountStatus` enum name), `page` (default 1), `pageSize` (default 20, max 100).
+
+Success (200) — `PagedResponse<AdminUserSummaryResponse>`:
+```json
+{
+  "page": 1, "pageSize": 20, "totalCount": 3, "totalPages": 1,
+  "success": true, "message": "Success", "traceId": "...",
+  "data": [ { "id": "...", "mobile": "9123456799", "name": "Test Household", "role": "Recipient", "accountStatus": "Pending", "city": "Ahmedabad", "isAvailable": true, "createdAtUtc": "..." } ]
+}
+```
+
+### PATCH /api/admin/accounts/{id}/verify
+Sets `AccountStatus` to `Verified` — unconditional (works from any current status, so it's also the only way to reverse a suspension; no separate "unsuspend" endpoint exists). For a `Pending` recipient, this is what unlocks them for `RecipientMatcher` — **verified live**: a listing created next to a genuinely `Pending` recipient matched to a farther-away *Verified* recipient instead; after this endpoint verified them, the identical scenario matched to them.
+
+No request body. Success (200): the updated `AdminUserSummaryResponse`. 404 — no such user.
+
+### PATCH /api/admin/accounts/{id}/suspend
+Sets `AccountStatus` to `Suspended`.
+
+No request body. Success (200): the updated `AdminUserSummaryResponse`. 422 — target is an Admin account, or the caller's own account (`"Admin accounts cannot be suspended."` / `"You cannot suspend your own account."`); 404 — no such user.
+
+### GET /api/disputes
+Lists disputes. Query params: `status` (optional, `Open` or `Resolved`), `page` (default 1), `pageSize` (default 20, max 100).
+
+> Raising a dispute isn't exposed via any endpoint — no earlier phase wired a user-facing "report an issue" flow, and adding one wasn't asked for by an "Admin module" phase. Rows only exist if inserted directly (or by some future phase that adds a raise endpoint).
+
+Success (200) — `PagedResponse<DisputeResponse>`:
+```json
+{
+  "page": 1, "pageSize": 20, "totalCount": 1, "totalPages": 1,
+  "success": true, "message": "Success", "traceId": "...",
+  "data": [ { "id": "...", "listingId": "...", "raisedByUserId": "...", "reason": "...", "status": "Open", "resolvedByUserId": null, "resolutionNote": null, "createdAtUtc": "..." } ]
+}
+```
+
+### PATCH /api/disputes/{id}/resolve
+Resolves an open dispute.
+
+Request:
+```json
+{ "resolutionNote": "Contacted volunteer and donor; issued a warning. Case closed." }
+```
+Success (200): the updated `DisputeResponse` (`status: "Resolved"`, `resolvedByUserId` set to the caller). Errors: 422 — `resolutionNote` missing/blank, or the dispute is already `Resolved` (`"This dispute has already been resolved."`); 404 — no such dispute.
+
+### GET /api/reports/platform
+Platform-wide chart-ready summary — same shape family as the donor/volunteer/recipient reports, scoped to everyone instead of one user.
+
+Success (200):
+```json
+{
+  "success": true, "message": "Success", "traceId": "...",
+  "data": { "totalMealsDonated": 67, "totalDeliveries": 3, "totalCertificates": 3, "totalUsers": 10, "mealsDonatedByMonth": [ { "period": "2026-07", "value": 67 } ] }
+}
+```
 
 ## Chart data contract
 Every chart-shaped series in the API (currently: `GET /api/reports/donor|volunteer|recipient`'s `*ByMonth` fields) uses the same `ChartPoint` shape:

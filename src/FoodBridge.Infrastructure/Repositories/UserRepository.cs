@@ -1,6 +1,7 @@
 using Dapper;
 using FoodBridge.Application.Abstractions;
 using FoodBridge.Domain.Entities;
+using FoodBridge.Domain.Enums;
 using FoodBridge.Infrastructure.Common;
 
 namespace FoodBridge.Infrastructure.Repositories;
@@ -75,6 +76,14 @@ WHERE Id = @Id AND IsDeleted = 0;";
         const string sql = "UPDATE Users SET AvatarUrl = @AvatarUrl, UpdatedAtUtc = SYSUTCDATETIME() WHERE Id = @Id AND IsDeleted = 0;";
         using var connection = ConnectionFactory.CreateConnection();
         var command = new CommandDefinition(sql, new { Id = id, AvatarUrl = avatarUrl }, cancellationToken: cancellationToken);
+        await connection.ExecuteAsync(command);
+    }
+
+    public async Task UpdateAccountStatusAsync(Guid id, AccountStatus accountStatus, CancellationToken cancellationToken = default)
+    {
+        const string sql = "UPDATE Users SET AccountStatus = @AccountStatus, UpdatedAtUtc = SYSUTCDATETIME() WHERE Id = @Id AND IsDeleted = 0;";
+        using var connection = ConnectionFactory.CreateConnection();
+        var command = new CommandDefinition(sql, new { Id = id, AccountStatus = (byte)accountStatus }, cancellationToken: cancellationToken);
         await connection.ExecuteAsync(command);
     }
 }

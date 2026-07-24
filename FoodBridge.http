@@ -326,3 +326,52 @@ Authorization: Bearer PASTE_VOLUNTEER_JWT_HERE
 ### Recipient impact report
 GET {{baseUrl}}/api/reports/recipient
 Authorization: Bearer PASTE_RECIPIENT_JWT_HERE
+
+
+### --- Admin ---
+@userId2 = PASTE_USER_ID_HERE
+@disputeId = PASTE_DISPUTE_ID_HERE
+
+### Dashboard stats
+GET {{baseUrl}}/api/admin/dashboard
+Authorization: Bearer PASTE_ADMIN_JWT_HERE
+
+
+### All listings platform-wide, optional status filter
+GET {{baseUrl}}/api/admin/listings?status=Confirmed&page=1&pageSize=20
+Authorization: Bearer PASTE_ADMIN_JWT_HERE
+
+
+### All accounts platform-wide, optional role/status filters
+GET {{baseUrl}}/api/admin/accounts?role=Recipient&accountStatus=Pending
+Authorization: Bearer PASTE_ADMIN_JWT_HERE
+
+
+### Verify an account (unlocks a Pending recipient for RecipientMatcher)
+PATCH {{baseUrl}}/api/admin/accounts/{{userId2}}/verify
+Authorization: Bearer PASTE_ADMIN_JWT_HERE
+
+
+### Suspend an account
+PATCH {{baseUrl}}/api/admin/accounts/{{userId2}}/suspend
+Authorization: Bearer PASTE_ADMIN_JWT_HERE
+
+
+### List disputes
+GET {{baseUrl}}/api/disputes?page=1&pageSize=20
+Authorization: Bearer PASTE_ADMIN_JWT_HERE
+
+
+### Resolve a dispute
+PATCH {{baseUrl}}/api/disputes/{{disputeId}}/resolve
+Authorization: Bearer PASTE_ADMIN_JWT_HERE
+Content-Type: application/json
+
+{
+  "resolutionNote": "Contacted volunteer and donor; issued a warning. Case closed."
+}
+
+
+### Platform-wide report
+GET {{baseUrl}}/api/reports/platform
+Authorization: Bearer PASTE_ADMIN_JWT_HERE

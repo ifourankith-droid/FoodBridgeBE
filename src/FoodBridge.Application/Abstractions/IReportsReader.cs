@@ -20,4 +20,9 @@ public interface IReportsReader
     Task<(int TotalMealsReceived, int TotalDeliveriesReceived)> GetRecipientSummaryAsync(Guid recipientId, CancellationToken cancellationToken = default);
 
     Task<IReadOnlyList<ChartPoint>> GetRecipientMealsByMonthAsync(Guid recipientId, CancellationToken cancellationToken = default);
+
+    /// <summary>Platform-wide (all donors), for Admin's report — not scoped to one user.</summary>
+    Task<(int TotalMealsDonated, int TotalDeliveries, int TotalCertificates, int TotalUsers)> GetPlatformSummaryAsync(CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<ChartPoint>> GetPlatformMealsByMonthAsync(CancellationToken cancellationToken = default);
 }

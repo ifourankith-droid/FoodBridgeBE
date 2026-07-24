@@ -11,4 +11,7 @@ public interface IReportService
     Task<Result<VolunteerReportResponse>> GetVolunteerReportAsync(CancellationToken cancellationToken = default);
 
     Task<Result<RecipientReportResponse>> GetRecipientReportAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>Platform-wide, Admin only — role restricted on the controller, not here.</summary>
+    Task<Result<PlatformReportResponse>> GetPlatformReportAsync(CancellationToken cancellationToken = default);
 }

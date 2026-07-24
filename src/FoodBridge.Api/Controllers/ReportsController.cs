@@ -43,4 +43,12 @@ public sealed class ReportsController : BaseController
         var result = await _reportService.GetRecipientReportAsync(cancellationToken);
         return HandleResult(result);
     }
+
+    [Authorize(Policy = "AdminOnly")]
+    [HttpGet("platform")]
+    public async Task<ActionResult<ApiResponse<PlatformReportResponse>>> GetPlatformReport(CancellationToken cancellationToken)
+    {
+        var result = await _reportService.GetPlatformReportAsync(cancellationToken);
+        return HandleResult(result);
+    }
 }
