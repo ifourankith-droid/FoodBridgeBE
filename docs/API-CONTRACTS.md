@@ -54,7 +54,7 @@ Success — existing user (200): `token` is a full auth JWT.
   "data": {
     "isNewUser": false,
     "token": "eyJ...",
-    "user": { "id": "...", "mobile": "9876543210", "name": "Green Leaf Restaurant", "role": "Donor", "city": "Ahmedabad", "accountStatus": "Verified", "recipientType": null }
+    "user": { "id": "...", "mobile": "9876543210", "name": "Green Leaf Restaurant", "role": "Donor", "city": "Ahmedabad", "accountStatus": "Verified", "recipientType": null, "avatarUrl": null }
   }
 }
 ```
@@ -126,9 +126,11 @@ No request body. Success (200):
 
 Success (200):
 ```json
-{ "success": true, "message": "Success", "traceId": "...", "data": { "id": "...", "mobile": "9876543210", "name": "Test Volunteer", "role": "Volunteer", "city": "Ahmedabad", "accountStatus": "Verified", "recipientType": null } }
+{ "success": true, "message": "Success", "traceId": "...", "data": { "id": "...", "mobile": "9876543210", "name": "Test Volunteer", "role": "Volunteer", "city": "Ahmedabad", "accountStatus": "Verified", "recipientType": null, "avatarUrl": null } }
 ```
 401 if no/invalid/revoked token.
+
+`avatarUrl` (also present on `register`'s and `verify-otp`'s embedded `user`) mirrors `GET /api/users/{id}`'s field of the same name — populated once `POST /api/users/{id}/avatar` has been called at least once, `null` until then. Kept in sync so a client never needs a second call just to render the logged-in user's own avatar.
 
 ## Users
 All 4 endpoints route under `/api/users` and require `[Authorize]` (any authenticated JWT). Authorization beyond that (self-or-admin, self-only, role restriction) is enforced in `UserService`, not via policy attributes, since it depends on the target resource, not just the caller's role.

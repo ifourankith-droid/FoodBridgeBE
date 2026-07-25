@@ -7,4 +7,5 @@ public sealed record UserResponse(
     string Role,
     string? City,
     string AccountStatus,
-    string? RecipientType);
+    string? RecipientType,
+    string? AvatarUrl);

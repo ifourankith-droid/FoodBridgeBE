@@ -12,5 +12,6 @@ public static class UserMapper
         user.Role.ToString(),
         user.City,
         user.AccountStatus.ToString(),
-        user.RecipientType?.ToString());
+        user.RecipientType?.ToString(),
+        user.AvatarUrl);
 }
