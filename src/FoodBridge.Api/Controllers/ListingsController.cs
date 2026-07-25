@@ -46,17 +46,20 @@ public sealed class ListingsController : BaseController
     }
 
     /// <summary>
-    /// Lists the current donor's own listings, optionally filtered by status.
+    /// Lists the current donor's own listings, optionally filtered by status, diet type, and/or meal type.
     /// </summary>
     [HttpGet]
     [ProducesResponseType(typeof(PagedResponse<ListingSummaryResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
     public async Task<ActionResult<PagedResponse<ListingSummaryResponse>>> GetMyListings(
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 20,
         [FromQuery] string? status = null,
+        [FromQuery] string? dietType = null,
+        [FromQuery] string? mealType = null,
         CancellationToken cancellationToken = default)
     {
-        var result = await _listingService.GetMyListingsAsync(page, pageSize, status, cancellationToken);
+        var result = await _listingService.GetMyListingsAsync(page, pageSize, status, dietType, mealType, cancellationToken);
         return HandlePagedResult(result);
     }
 

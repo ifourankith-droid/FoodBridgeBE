@@ -38,7 +38,12 @@ public sealed class ListingExpiryBackgroundService : BackgroundService
 
         try
         {
-            var expiredIds = await listingRepository.ExpirePastDeadlineListingsAsync(clock.UtcNow, cancellationToken);
+            var (expiredIds, revertedIds) = await listingRepository.ExpirePastDeadlineListingsAsync(clock.UtcNow, cancellationToken);
+            if (revertedIds.Count > 0)
+            {
+                _logger.LogInformation("Listing expiry sweep reverted {Count} abandoned Claimed listing(s) back to Pending.", revertedIds.Count);
+            }
+
             if (expiredIds.Count > 0)
             {
                 _logger.LogInformation("Listing expiry sweep flipped {Count} listing(s) to Expired.", expiredIds.Count);

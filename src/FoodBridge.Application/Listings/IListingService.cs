@@ -7,7 +7,7 @@ public interface IListingService
 {
     Task<Result<ListingResponse>> CreateAsync(CreateListingRequest request, CancellationToken cancellationToken = default);
 
-    Task<Result<PagedResult<ListingSummaryResponse>>> GetMyListingsAsync(int page, int pageSize, string? status, CancellationToken cancellationToken = default);
+    Task<Result<PagedResult<ListingSummaryResponse>>> GetMyListingsAsync(int page, int pageSize, string? status, string? dietType, string? mealType, CancellationToken cancellationToken = default);
 
     Task<Result<ListingResponse>> GetByIdAsync(Guid listingId, CancellationToken cancellationToken = default);
 

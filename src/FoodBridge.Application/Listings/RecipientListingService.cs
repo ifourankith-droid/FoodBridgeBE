@@ -20,6 +20,7 @@ public sealed class RecipientListingService : IRecipientListingService
     private const string RejectedNotePrefix = "Recipient rejected the match.";
 
     private readonly IListingRepository _listingRepository;
+    private readonly IUserRepository _userRepository;
     private readonly IRecipientMatcher _recipientMatcher;
     private readonly INotificationDispatcher _notificationDispatcher;
     private readonly ICurrentUser _currentUser;
@@ -27,12 +28,14 @@ public sealed class RecipientListingService : IRecipientListingService
 
     public RecipientListingService(
         IListingRepository listingRepository,
+        IUserRepository userRepository,
         IRecipientMatcher recipientMatcher,
         INotificationDispatcher notificationDispatcher,
         ICurrentUser currentUser,
         IClock clock)
     {
         _listingRepository = listingRepository;
+        _userRepository = userRepository;
         _recipientMatcher = recipientMatcher;
         _notificationDispatcher = notificationDispatcher;
         _currentUser = currentUser;
@@ -225,6 +228,6 @@ public sealed class RecipientListingService : IRecipientListingService
     {
         var images = await _listingRepository.GetImagesAsync(listing.Id, cancellationToken);
         var timeline = await _listingRepository.GetTimelineAsync(listing.Id, cancellationToken);
-        return listing.ToResponse(images, timeline);
+        return await listing.ToResponseAsync(images, timeline, _userRepository, cancellationToken);
     }
 }

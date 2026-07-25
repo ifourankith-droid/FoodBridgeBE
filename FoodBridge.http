@@ -148,6 +148,11 @@ GET {{baseUrl}}/api/listings?page=1&pageSize=20&status=Pending
 Authorization: Bearer PASTE_DONOR_JWT_HERE
 
 
+### List my listings filtered by diet/meal type
+GET {{baseUrl}}/api/listings?page=1&pageSize=20&dietType=Veg&mealType=Dinner
+Authorization: Bearer PASTE_DONOR_JWT_HERE
+
+
 ### Get listing detail (images + timeline)
 GET {{baseUrl}}/api/listings/{{listingId}}
 Authorization: Bearer PASTE_DONOR_JWT_HERE
@@ -198,8 +203,18 @@ GET {{baseUrl}}/api/listings/nearby?latitude=23.0338&longitude=72.5623&radiusKm=
 Authorization: Bearer PASTE_VOLUNTEER_JWT_HERE
 
 
+### Nearby pending listings filtered by diet/meal type
+GET {{baseUrl}}/api/listings/nearby?latitude=23.0338&longitude=72.5623&radiusKm=15&dietType=Veg&mealType=Dinner
+Authorization: Bearer PASTE_VOLUNTEER_JWT_HERE
+
+
 ### Claim a pending listing (optimistic concurrency; 409 if already claimed)
 POST {{baseUrl}}/api/listings/{{listingId}}/claim
+Authorization: Bearer PASTE_VOLUNTEER_JWT_HERE
+
+
+### Release a claim (Claimed -> Pending; assigned volunteer only; 422 once pickup is confirmed)
+POST {{baseUrl}}/api/listings/{{listingId}}/unclaim
 Authorization: Bearer PASTE_VOLUNTEER_JWT_HERE
 
 
@@ -355,6 +370,17 @@ Authorization: Bearer PASTE_ADMIN_JWT_HERE
 ### Suspend an account
 PATCH {{baseUrl}}/api/admin/accounts/{{userId2}}/suspend
 Authorization: Bearer PASTE_ADMIN_JWT_HERE
+
+
+### Raise a dispute (any role; caller must be the listing's donor/volunteer/recipient)
+POST {{baseUrl}}/api/disputes
+Authorization: Bearer PASTE_DONOR_JWT_HERE
+Content-Type: application/json
+
+{
+  "listingId": "{{listingId}}",
+  "reason": "Volunteer never showed up for pickup."
+}
 
 
 ### List disputes

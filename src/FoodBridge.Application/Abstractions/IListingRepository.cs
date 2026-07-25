@@ -14,7 +14,7 @@ public interface IListingRepository
 
     Task<Listing?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
 
-    Task<(IReadOnlyList<Listing> Items, int TotalCount)> GetByDonorAsync(Guid donorId, ListingStatus? status, int page, int pageSize, CancellationToken cancellationToken = default);
+    Task<(IReadOnlyList<Listing> Items, int TotalCount)> GetByDonorAsync(Guid donorId, ListingStatus? status, DietType? dietType, MealType? mealType, int page, int pageSize, CancellationToken cancellationToken = default);
 
     Task<IReadOnlyList<ListingImage>> GetImagesAsync(Guid listingId, CancellationToken cancellationToken = default);
 
@@ -38,7 +38,7 @@ public interface IListingRepository
     /// </summary>
     Task<bool> TryClaimAsync(Guid listingId, Guid volunteerId, ListingTimelineEvent claimEvent, CancellationToken cancellationToken = default);
 
-    Task<(IReadOnlyList<NearbyListing> Items, int TotalCount)> GetNearbyPendingAsync(decimal latitude, decimal longitude, double radiusMeters, int page, int pageSize, CancellationToken cancellationToken = default);
+    Task<(IReadOnlyList<NearbyListing> Items, int TotalCount)> GetNearbyPendingAsync(decimal latitude, decimal longitude, double radiusMeters, DietType? dietType, MealType? mealType, int page, int pageSize, CancellationToken cancellationToken = default);
 
     /// <summary>Listings currently matched to this recipient and awaiting their accept/reject decision (Status = PickedUp).</summary>
     Task<(IReadOnlyList<Listing> Items, int TotalCount)> GetIncomingForRecipientAsync(Guid recipientId, int page, int pageSize, CancellationToken cancellationToken = default);
@@ -61,9 +61,13 @@ public interface IListingRepository
     Task ConfirmReceiptAsync(Listing listing, ListingTimelineEvent timelineEvent, VolunteerPoint volunteerPoint, Certificate certificate, IReadOnlyList<Notification> notifications, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Atomically flips every Pending listing whose PickupDeadlineUtc has passed to
-    /// Expired and inserts a system timeline event (ActorUserId null) for each. Returns
-    /// the ids that were expired, for logging.
+    /// Atomically, in one sweep: (1) reverts every Claimed listing whose PickupDeadlineUtc
+    /// has passed back to Pending (clearing VolunteerId) — reuses the state machine's
+    /// existing, already-legal Claimed→Pending transition, not a new one — so a volunteer
+    /// who claimed and never showed up doesn't leave perishable food stuck forever; then
+    /// (2) expires every Pending listing whose deadline has passed, including rows just
+    /// reverted in step 1. Inserts a system timeline event (ActorUserId null) for each
+    /// change. Returns the expired and reverted-to-pending ids separately, for logging.
     /// </summary>
-    Task<IReadOnlyList<Guid>> ExpirePastDeadlineListingsAsync(DateTime nowUtc, CancellationToken cancellationToken = default);
+    Task<(IReadOnlyList<Guid> ExpiredIds, IReadOnlyList<Guid> RevertedToPendingIds)> ExpirePastDeadlineListingsAsync(DateTime nowUtc, CancellationToken cancellationToken = default);
 }

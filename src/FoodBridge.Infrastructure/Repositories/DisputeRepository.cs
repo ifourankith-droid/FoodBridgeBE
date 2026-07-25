@@ -14,6 +14,18 @@ public sealed class DisputeRepository : BaseRepository, IDisputeRepository
     {
     }
 
+    public async Task<Guid> CreateAsync(Dispute dispute, CancellationToken cancellationToken = default)
+    {
+        const string sql = @"
+INSERT INTO Disputes (ListingId, RaisedByUserId, Reason, Status, CreatedAtUtc, UpdatedAtUtc)
+OUTPUT INSERTED.Id
+VALUES (@ListingId, @RaisedByUserId, @Reason, @Status, @CreatedAtUtc, @UpdatedAtUtc);";
+
+        using var connection = ConnectionFactory.CreateConnection();
+        var command = new CommandDefinition(sql, dispute, cancellationToken: cancellationToken);
+        return await connection.ExecuteScalarAsync<Guid>(command);
+    }
+
     public async Task<(IReadOnlyList<Dispute> Items, int TotalCount)> GetAllAsync(DisputeStatus? status, int page, int pageSize, CancellationToken cancellationToken = default)
     {
         using var connection = ConnectionFactory.CreateConnection();

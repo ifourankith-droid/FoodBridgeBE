@@ -120,6 +120,20 @@ Phases run one at a time, in order. A phase is not "done" until its acceptance c
 - [x] A new developer can clone, set one connection string, press F5, and hit every endpoint from `FoodBridge.http` following only the docs.
 - [x] Zero build warnings, all phases checked off.
 
+## Phase 11 — Full test verification + product-completeness pass
+- [x] 4-track parallel audit: SQL/data-access security, FluentValidation coverage, authorization/IDOR, product completeness vs. CLAUDE.md/the prototype. Three tracks clean; the one validation-coverage finding was a verified false positive (see `docs/ARCHITECTURE.md` decisions log).
+- [x] Contact info (`donorName`/`donorMobile`, `volunteerName`/`volunteerMobile`, `recipientName`/`recipientMobile`) added to `ListingResponse`, gated to the listing's own parties.
+- [x] `dietType`/`mealType` filters added to `GET /api/listings` and `GET /api/listings/nearby`, fulfilling those columns' original Phase 4 "future filtering" purpose.
+- [x] `POST /api/listings/{id}/unclaim` added — the spec-supported `Claimed → Pending` transition that existed in `ListingStateMachine` but was never exposed.
+- [x] `ListingExpiryBackgroundService` now also reverts abandoned `Claimed` listings to `Pending` (not just expiring overdue `Pending` ones), closing the "volunteer claims and goes silent" dead end.
+- [x] `POST /api/disputes` added (raise a dispute) — promoted out of the Roadmap; any party on the listing can raise one, `AdminOnly` stays on list/resolve only.
+- [x] Docs updated in the same phase: `docs/API-CONTRACTS.md`, `FoodBridge.http`, `docs/ARCHITECTURE.md` decisions log + Roadmap.
+
+**Acceptance criteria**
+- [x] Zero build warnings after all changes.
+- [x] Full live regression sweep across every module/role, plus the 5 new/changed endpoints — verified live: contact info populates/gates correctly through claim→pickup→delivery→confirm-receipt; diet/meal filters include/exclude correctly and 422 on bad values (both `GET /api/listings` and `nearby`); unclaim works and is ownership-gated (403 for a non-assigned volunteer) and correctly blocked once `PickedUp` (422); the expiry sweep's auto-recovery fired for real against leftover data on startup (`reverted 3 abandoned Claimed listing(s)`, `flipped 4 listing(s) to Expired`); raise-dispute succeeds for the donor and the volunteer (both parties), 403 for an uninvolved donor, then Admin lists/resolves it while a non-admin still gets 403 on the browse/resolve routes; certificates/leaderboard/reports/notifications/admin dashboard all still correct after the `ListingResponse` shape change.
+- [x] Two items surfaced by the audit (self-service mobile change, self-service account deletion) deliberately deferred to the Roadmap rather than built, since each needs a business-rule decision not specified anywhere — flagged explicitly rather than silently decided.
+
 ---
 
 ## Demo script

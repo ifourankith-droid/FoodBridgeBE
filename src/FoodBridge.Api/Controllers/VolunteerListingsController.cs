@@ -26,7 +26,7 @@ public sealed class VolunteerListingsController : BaseController
 
     /// <summary>
     /// Lists Pending listings within <paramref name="radiusKm"/> (default 10, max 50) of the
-    /// given coordinates, ordered by ascending distance.
+    /// given coordinates, ordered by ascending distance. Optionally filtered by diet/meal type.
     /// </summary>
     [HttpGet("nearby")]
     [ProducesResponseType(typeof(PagedResponse<ListingNearbyResponse>), StatusCodes.Status200OK)]
@@ -35,11 +35,13 @@ public sealed class VolunteerListingsController : BaseController
         [FromQuery] decimal latitude,
         [FromQuery] decimal longitude,
         [FromQuery] double? radiusKm,
+        [FromQuery] string? dietType = null,
+        [FromQuery] string? mealType = null,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 20,
         CancellationToken cancellationToken = default)
     {
-        var result = await _volunteerListingService.GetNearbyAsync(latitude, longitude, radiusKm, page, pageSize, cancellationToken);
+        var result = await _volunteerListingService.GetNearbyAsync(latitude, longitude, radiusKm, dietType, mealType, page, pageSize, cancellationToken);
         return HandlePagedResult(result);
     }
 
@@ -54,6 +56,21 @@ public sealed class VolunteerListingsController : BaseController
     public async Task<ActionResult<ApiResponse<ListingResponse>>> Claim(Guid id, CancellationToken cancellationToken)
     {
         var result = await _volunteerListingService.ClaimAsync(id, cancellationToken);
+        return HandleResult(result);
+    }
+
+    /// <summary>
+    /// Releases a claim (Claimed → Pending), making the listing available for another
+    /// volunteer to claim. Assigned volunteer only; only while still Claimed (422 once
+    /// pickup has been confirmed — there's no undoing a physical pickup).
+    /// </summary>
+    [HttpPost("{id:guid}/unclaim")]
+    [ProducesResponseType(typeof(ApiResponse<ListingResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<ApiResponse<ListingResponse>>> Unclaim(Guid id, CancellationToken cancellationToken)
+    {
+        var result = await _volunteerListingService.UnclaimAsync(id, cancellationToken);
         return HandleResult(result);
     }
 

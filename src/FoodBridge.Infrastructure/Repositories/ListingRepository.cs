@@ -46,19 +46,22 @@ VALUES (@ListingId, @FromStatus, @ToStatus, @ActorUserId, @Note, @PhotoUrl, @Cre
         return await connection.QuerySingleOrDefaultAsync<Listing>(command);
     }
 
-    public async Task<(IReadOnlyList<Listing> Items, int TotalCount)> GetByDonorAsync(Guid donorId, ListingStatus? status, int page, int pageSize, CancellationToken cancellationToken = default)
+    public async Task<(IReadOnlyList<Listing> Items, int TotalCount)> GetByDonorAsync(Guid donorId, ListingStatus? status, DietType? dietType, MealType? mealType, int page, int pageSize, CancellationToken cancellationToken = default)
     {
         using var connection = ConnectionFactory.CreateConnection();
 
         const string whereSql = " WHERE DonorId = @DonorId AND IsDeleted = 0";
         var statusFilterSql = status is null ? string.Empty : " AND Status = @Status";
-        var parameters = new { DonorId = donorId, Status = status, Offset = (page - 1) * pageSize, PageSize = pageSize };
+        var dietFilterSql = dietType is null ? string.Empty : " AND DietType = @DietType";
+        var mealFilterSql = mealType is null ? string.Empty : " AND MealType = @MealType";
+        var filterSql = statusFilterSql + dietFilterSql + mealFilterSql;
+        var parameters = new { DonorId = donorId, Status = status, DietType = dietType, MealType = mealType, Offset = (page - 1) * pageSize, PageSize = pageSize };
 
-        var countCommand = new CommandDefinition("SELECT COUNT(*) FROM Listings" + whereSql + statusFilterSql, parameters, cancellationToken: cancellationToken);
+        var countCommand = new CommandDefinition("SELECT COUNT(*) FROM Listings" + whereSql + filterSql, parameters, cancellationToken: cancellationToken);
         var totalCount = await connection.ExecuteScalarAsync<int>(countCommand);
 
         var itemsCommand = new CommandDefinition(
-            SelectSql + whereSql + statusFilterSql + " ORDER BY CreatedAtUtc DESC OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY",
+            SelectSql + whereSql + filterSql + " ORDER BY CreatedAtUtc DESC OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY",
             parameters,
             cancellationToken: cancellationToken);
         var items = (await connection.QueryAsync<Listing>(itemsCommand)).ToList();
@@ -174,14 +177,16 @@ VALUES (@ListingId, @FromStatus, @ToStatus, @ActorUserId, @Note, @PhotoUrl, @Cre
             return true;
         }, cancellationToken);
 
-    public async Task<(IReadOnlyList<NearbyListing> Items, int TotalCount)> GetNearbyPendingAsync(decimal latitude, decimal longitude, double radiusMeters, int page, int pageSize, CancellationToken cancellationToken = default)
+    public async Task<(IReadOnlyList<NearbyListing> Items, int TotalCount)> GetNearbyPendingAsync(decimal latitude, decimal longitude, double radiusMeters, DietType? dietType, MealType? mealType, int page, int pageSize, CancellationToken cancellationToken = default)
     {
         using var connection = ConnectionFactory.CreateConnection();
 
         var distanceSql = $"Location.STDistance({GeoHelper.PointFromLatLngFragment})";
+        var dietFilterSql = dietType is null ? string.Empty : " AND DietType = @DietType";
+        var mealFilterSql = mealType is null ? string.Empty : " AND MealType = @MealType";
         var whereSql = $@"
 WHERE Status = @PendingStatus AND IsDeleted = 0 AND PickupDeadlineUtc > @NowUtc
-    AND {distanceSql} <= @RadiusMeters";
+    AND {distanceSql} <= @RadiusMeters{dietFilterSql}{mealFilterSql}";
 
         var parameters = new
         {
@@ -190,6 +195,8 @@ WHERE Status = @PendingStatus AND IsDeleted = 0 AND PickupDeadlineUtc > @NowUtc
             RadiusMeters = radiusMeters,
             PendingStatus = (byte)ListingStatus.Pending,
             NowUtc = DateTime.UtcNow,
+            DietType = dietType,
+            MealType = mealType,
             Offset = (page - 1) * pageSize,
             PageSize = pageSize,
         };
@@ -299,41 +306,76 @@ VALUES (@UserId, @Type, @Title, @Body, @PayloadJson, @IsRead, @CreatedAtUtc, @Up
             }
         }, cancellationToken);
 
-    public Task<IReadOnlyList<Guid>> ExpirePastDeadlineListingsAsync(DateTime nowUtc, CancellationToken cancellationToken = default) =>
+    public Task<(IReadOnlyList<Guid> ExpiredIds, IReadOnlyList<Guid> RevertedToPendingIds)> ExpirePastDeadlineListingsAsync(DateTime nowUtc, CancellationToken cancellationToken = default) =>
         ExecuteInTransactionAsync(async (connection, transaction) =>
         {
-            const string updateSql = @"
+            // Step 1: a volunteer who claimed and never showed up must not leave perishable
+            // food stuck forever — revert Claimed-past-deadline listings back to Pending.
+            // Reuses the state machine's existing Claimed→Pending transition (see
+            // ListingStateMachine); does not invent a new one.
+            const string revertSql = @"
+UPDATE Listings
+SET Status = @PendingStatus, VolunteerId = NULL, UpdatedAtUtc = @NowUtc
+OUTPUT INSERTED.Id
+WHERE Status = @ClaimedStatus AND PickupDeadlineUtc <= @NowUtc AND IsDeleted = 0;";
+
+            var revertedIds = (await connection.QueryAsync<Guid>(new CommandDefinition(
+                revertSql,
+                new { PendingStatus = (byte)ListingStatus.Pending, ClaimedStatus = (byte)ListingStatus.Claimed, NowUtc = nowUtc },
+                transaction,
+                cancellationToken: cancellationToken))).ToList();
+
+            if (revertedIds.Count > 0)
+            {
+                const string insertRevertTimelineSql = @"
+INSERT INTO ListingTimeline (ListingId, FromStatus, ToStatus, ActorUserId, Note, PhotoUrl, CreatedAtUtc)
+VALUES (@ListingId, @FromStatus, @ToStatus, NULL, @Note, NULL, @CreatedAtUtc);";
+
+                var revertRows = revertedIds.Select(id => new
+                {
+                    ListingId = id,
+                    FromStatus = (byte)ListingStatus.Claimed,
+                    ToStatus = (byte)ListingStatus.Pending,
+                    Note = "Volunteer did not act before the pickup deadline — automatically returned to Pending.",
+                    CreatedAtUtc = nowUtc,
+                });
+
+                await connection.ExecuteAsync(new CommandDefinition(insertRevertTimelineSql, revertRows, transaction, cancellationToken: cancellationToken));
+            }
+
+            // Step 2: expire every Pending listing whose deadline has passed — including
+            // rows just reverted in step 1 above, since their deadline is by definition
+            // already gone too, so there's no reason to give them a further Pending window.
+            const string expireSql = @"
 UPDATE Listings
 SET Status = @ExpiredStatus, UpdatedAtUtc = @NowUtc
 OUTPUT INSERTED.Id
 WHERE Status = @PendingStatus AND PickupDeadlineUtc <= @NowUtc AND IsDeleted = 0;";
 
             var expiredIds = (await connection.QueryAsync<Guid>(new CommandDefinition(
-                updateSql,
+                expireSql,
                 new { ExpiredStatus = (byte)ListingStatus.Expired, PendingStatus = (byte)ListingStatus.Pending, NowUtc = nowUtc },
                 transaction,
                 cancellationToken: cancellationToken))).ToList();
 
-            if (expiredIds.Count == 0)
+            if (expiredIds.Count > 0)
             {
-                return (IReadOnlyList<Guid>)expiredIds;
-            }
-
-            const string insertTimelineSql = @"
+                const string insertExpireTimelineSql = @"
 INSERT INTO ListingTimeline (ListingId, FromStatus, ToStatus, ActorUserId, Note, PhotoUrl, CreatedAtUtc)
 VALUES (@ListingId, @FromStatus, @ToStatus, NULL, @Note, NULL, @CreatedAtUtc);";
 
-            var timelineRows = expiredIds.Select(id => new
-            {
-                ListingId = id,
-                FromStatus = (byte)ListingStatus.Pending,
-                ToStatus = (byte)ListingStatus.Expired,
-                Note = "Listing expired automatically (pickup deadline passed).",
-                CreatedAtUtc = nowUtc,
-            });
+                var expireRows = expiredIds.Select(id => new
+                {
+                    ListingId = id,
+                    FromStatus = (byte)ListingStatus.Pending,
+                    ToStatus = (byte)ListingStatus.Expired,
+                    Note = "Listing expired automatically (pickup deadline passed).",
+                    CreatedAtUtc = nowUtc,
+                });
 
-            await connection.ExecuteAsync(new CommandDefinition(insertTimelineSql, timelineRows, transaction, cancellationToken: cancellationToken));
+                await connection.ExecuteAsync(new CommandDefinition(insertExpireTimelineSql, expireRows, transaction, cancellationToken: cancellationToken));
+            }
 
-            return (IReadOnlyList<Guid>)expiredIds;
+            return ((IReadOnlyList<Guid>)expiredIds, (IReadOnlyList<Guid>)revertedIds);
         }, cancellationToken);
 }

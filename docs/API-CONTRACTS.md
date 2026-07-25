@@ -14,11 +14,11 @@ See `docs/ARCHITECTURE.md` § Data dictionary → Enum value tables (Role, Accou
 - [Auth](#auth) — send-otp, verify-otp, register, logout, me
 - [Users](#users) — get/update profile, availability, avatar
 - [Listings — Donor](#listings--donor) — create, list, detail, update, cancel, image upload
-- [Listings — Volunteer](#listings--volunteer) — nearby, claim, confirm-pickup, confirm-delivery
+- [Listings — Volunteer](#listings--volunteer) — nearby, claim, unclaim, confirm-pickup, confirm-delivery
 - [Listings — Recipient](#listings--recipient) — incoming, accept, reject, confirm-receipt, history
 - [Notifications & real-time (SignalR contract)](#notifications--real-time-signalr-contract) — notifications list/read, tracking, geocode
 - [Certificates, Leaderboard, Reports](#certificates-leaderboard-reports) — certificate list/detail/pdf, leaderboard (+ my-rank), donor/volunteer/recipient reports
-- [Admin](#admin) — dashboard, listings/accounts browse, verify/suspend, disputes, platform report
+- [Admin](#admin) — dashboard, listings/accounts browse, verify/suspend, disputes (raise/list/resolve), platform report
 
 ## Auth
 All 5 endpoints route under `/api/auth`. None require a role policy; `logout` and `me` require any authenticated JWT (`[Authorize]`).
@@ -206,9 +206,9 @@ Success (200): a `ListingResponse` (see `GET /api/listings/{id}` below) with `st
 Errors: 400 — validation (bad enum name, non-future deadline before `preparedAtUtc`, out-of-range lat/lng, etc.); 403 — caller isn't a Donor.
 
 ### GET /api/listings
-Lists the caller's **own** listings, paginated, optionally filtered by status.
+Lists the caller's **own** listings, paginated, optionally filtered by status, diet type, and/or meal type.
 
-Query params: `page` (default 1), `pageSize` (default 20, max 100 — clamped server-side), `status` (optional; one of the `Listings.Status` enum names).
+Query params: `page` (default 1), `pageSize` (default 20, max 100 — clamped server-side), `status` (optional; one of the `Listings.Status` enum names), `dietType` (optional; `Veg`/`NonVeg`), `mealType` (optional; `Breakfast`/`Lunch`/`Dinner`/`Snacks`). 422 — an unrecognized value for any of the three.
 
 Success (200) — `PagedResponse<ListingSummaryResponse>`:
 ```json
@@ -235,13 +235,15 @@ Success (200):
     "preparedAtUtc": "2026-07-23T08:00:00Z", "pickupDeadlineUtc": "2026-07-23T14:00:00Z",
     "pickupAddress": "C.G. Road, Navrangpura", "latitude": 23.0338, "longitude": 72.5623,
     "status": "Pending", "volunteerId": null, "recipientId": null,
+    "donorName": "Green Leaf Restaurant", "donorMobile": "9999900001",
+    "volunteerName": null, "volunteerMobile": null, "recipientName": null, "recipientMobile": null,
     "createdAtUtc": "...", "updatedAtUtc": "...",
     "images": [ { "id": "...", "imageUrl": "/uploads/....jpg", "createdAtUtc": "..." } ],
     "timeline": [ { "fromStatus": null, "toStatus": "Pending", "actorUserId": "...", "note": "Listing created.", "photoUrl": null, "createdAtUtc": "..." } ]
   }
 }
 ```
-404 — no such listing. 403 — belongs to a different donor.
+`donorName`/`donorMobile` are always populated; `volunteerName`/`volunteerMobile`/`recipientName`/`recipientMobile` populate once `volunteerId`/`recipientId` are set (`null` until then) — this is every party's way to coordinate the physical handoff (who's picking up, who's delivering to whom), and every caller of this same `ListingResponse` shape (donor/volunteer/recipient endpoints below) is already restricted to a party on that specific listing, so this never leaks contact info to anyone uninvolved. 404 — no such listing. 403 — belongs to a different donor.
 
 ### PUT /api/listings/{id}
 Updates a listing. Owning donor only, and **only while `Status == Pending`**.
@@ -265,12 +267,12 @@ Success (200):
 The URL is directly servable (static files under `wwwroot/uploads`, same as avatars). Errors: 422 — `"Image must be 5MB or smaller."` / `"Image must be a JPG or PNG file."` / `"Images can only be added to pending listings."`; 400 — no file attached.
 
 ## Listings — Volunteer
-All 4 endpoints route under `/api/listings` and require `[Authorize(Policy = "VolunteerOnly")]` — any non-Volunteer role gets 403. `confirm-pickup`/`confirm-delivery` additionally check that the caller is the listing's assigned `VolunteerId` (403 otherwise, enforced in `VolunteerListingService`, not a policy).
+All 5 endpoints route under `/api/listings` and require `[Authorize(Policy = "VolunteerOnly")]` — any non-Volunteer role gets 403. `unclaim`/`confirm-pickup`/`confirm-delivery` additionally check that the caller is the listing's assigned `VolunteerId` (403 otherwise, enforced in `VolunteerListingService`, not a policy).
 
 ### GET /api/listings/nearby
 Lists `Pending` listings within `radiusKm` of the given coordinates, ordered by ascending distance. Listings whose `pickupDeadlineUtc` has already passed are excluded even though their `Status` is still `Pending` (the expiry job that formally flips them hasn't run yet — see `docs/ARCHITECTURE.md` decisions log).
 
-Query params: `latitude`, `longitude` (required), `radiusKm` (optional, default 10, clamped to a max of 50), `page` (default 1), `pageSize` (default 20, max 100).
+Query params: `latitude`, `longitude` (required), `radiusKm` (optional, default 10, clamped to a max of 50), `dietType` (optional; `Veg`/`NonVeg`), `mealType` (optional; `Breakfast`/`Lunch`/`Dinner`/`Snacks`), `page` (default 1), `pageSize` (default 20, max 100).
 
 Success (200) — `PagedResponse<ListingNearbyResponse>`:
 ```json
@@ -291,6 +293,13 @@ Claims a `Pending` listing (`Pending → Claimed`, sets `VolunteerId` to the cal
 No request body. Success (200): a `ListingResponse` (same shape as the Donor detail endpoint) with `status: "Claimed"`.
 
 **409** — the listing is no longer `Pending` (already claimed by someone else, cancelled, expired, etc.) — `"Listing is no longer available to claim (current status: {status})."`. Verified live: two concurrent claim requests for the same listing resolve to exactly one 200 and one 409, backed by a conditional `UPDATE ... WHERE Status = Pending` rather than the `RowVersion` column. 404 — no such listing.
+
+### POST /api/listings/{id}/unclaim
+Voluntarily releases a claim (`Claimed → Pending`), making the listing available for someone else to claim — e.g. the volunteer realizes they can't make it. Assigned volunteer only.
+
+No request body. Success (200): a `ListingResponse` with `status: "Pending"` and `volunteerId: null` again. Errors: 403 — not the assigned volunteer; 422 — the listing is no longer `Claimed` (e.g. pickup was already confirmed — there's no undoing a physical pickup); 404 — no such listing.
+
+If a volunteer claims and simply goes silent instead of calling this explicitly, the same `Claimed → Pending` transition happens automatically once `pickupDeadlineUtc` passes — see the expiry job note in `docs/ARCHITECTURE.md` decisions log.
 
 ### POST /api/listings/{id}/confirm-pickup
 Confirms pickup (`Claimed → PickedUp`). Assigned volunteer only. `multipart/form-data` with a required `photo` field (JPG/PNG, max 5MB). Auto-matches the nearest available Verified recipient via `RecipientMatcher` if the listing doesn't already have one.
@@ -468,7 +477,7 @@ Success (200):
 All three report `*ByMonth` series use the same `{ period: "yyyy-MM", value: number }` shape — directly bindable to a chart with no client-side reshaping.
 
 ## Admin
-All 8 endpoints require `[Authorize(Policy = "AdminOnly")]` — any non-Admin role gets 403 on every one (verified live with a real Donor JWT swept across all 8). `AdminController`'s browse/moderation actions are nested under `/api/admin`; `DisputesController` is a flat `/api/disputes` resource (same policy); the platform report lives on the existing `ReportsController` (`GET /api/reports/platform`) alongside the donor/volunteer/recipient reports from the previous section.
+8 of these 9 endpoints require `[Authorize(Policy = "AdminOnly")]` — any non-Admin role gets 403 on every one (verified live with a real Donor JWT swept across all 8 original ones). The exception is `POST /api/disputes` (raise a dispute), open to any authenticated role and gated by listing-ownership in the service instead — see its own entry below. `AdminController`'s browse/moderation actions are nested under `/api/admin`; `DisputesController` is a flat `/api/disputes` resource; the platform report lives on the existing `ReportsController` (`GET /api/reports/platform`) alongside the donor/volunteer/recipient reports from the previous section.
 
 ### GET /api/admin/dashboard
 At-a-glance platform counts.
@@ -525,10 +534,17 @@ Sets `AccountStatus` to `Suspended`.
 
 No request body. Success (200): the updated `AdminUserSummaryResponse`. 422 — target is an Admin account, or the caller's own account (`"Admin accounts cannot be suspended."` / `"You cannot suspend your own account."`); 404 — no such user.
 
-### GET /api/disputes
-Lists disputes. Query params: `status` (optional, `Open` or `Resolved`), `page` (default 1), `pageSize` (default 20, max 100).
+### POST /api/disputes
+Raises a dispute about a listing. `[Authorize]`, any role — but callable only by that specific listing's donor, assigned volunteer, or matched recipient (403 for anyone else, enforced in `DisputeService`, not a policy).
 
-> Raising a dispute isn't exposed via any endpoint — no earlier phase wired a user-facing "report an issue" flow, and adding one wasn't asked for by an "Admin module" phase. Rows only exist if inserted directly (or by some future phase that adds a raise endpoint).
+Request:
+```json
+{ "listingId": "...", "reason": "Volunteer never showed up for pickup." }
+```
+Success (200): the created `DisputeResponse` (`status: "Open"`, `raisedByUserId` set to the caller). Errors: 400 — `listingId`/`reason` missing or `reason` over 1000 chars; 403 — caller isn't a party to this listing; 404 — no such listing.
+
+### GET /api/disputes
+`[Authorize(Policy = "AdminOnly")]`. Lists disputes. Query params: `status` (optional, `Open` or `Resolved`), `page` (default 1), `pageSize` (default 20, max 100).
 
 Success (200) — `PagedResponse<DisputeResponse>`:
 ```json

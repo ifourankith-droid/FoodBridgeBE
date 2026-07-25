@@ -14,13 +14,15 @@ public sealed class ListingService : IListingService
     private static readonly string[] AllowedImageExtensions = { ".jpg", ".jpeg", ".png" };
 
     private readonly IListingRepository _listingRepository;
+    private readonly IUserRepository _userRepository;
     private readonly IFileStorage _fileStorage;
     private readonly ICurrentUser _currentUser;
     private readonly IClock _clock;
 
-    public ListingService(IListingRepository listingRepository, IFileStorage fileStorage, ICurrentUser currentUser, IClock clock)
+    public ListingService(IListingRepository listingRepository, IUserRepository userRepository, IFileStorage fileStorage, ICurrentUser currentUser, IClock clock)
     {
         _listingRepository = listingRepository;
+        _userRepository = userRepository;
         _fileStorage = fileStorage;
         _currentUser = currentUser;
         _clock = clock;
@@ -60,10 +62,10 @@ public sealed class ListingService : IListingService
 
         await _listingRepository.CreateAsync(listing, creationEvent, cancellationToken);
 
-        return Result.Success(listing.ToResponse(Array.Empty<ListingImage>(), new[] { creationEvent }), "Listing created successfully.");
+        return Result.Success(await listing.ToResponseAsync(Array.Empty<ListingImage>(), new[] { creationEvent }, _userRepository, cancellationToken), "Listing created successfully.");
     }
 
-    public async Task<Result<PagedResult<ListingSummaryResponse>>> GetMyListingsAsync(int page, int pageSize, string? status, CancellationToken cancellationToken = default)
+    public async Task<Result<PagedResult<ListingSummaryResponse>>> GetMyListingsAsync(int page, int pageSize, string? status, string? dietType, string? mealType, CancellationToken cancellationToken = default)
     {
         ListingStatus? statusFilter = null;
         if (!string.IsNullOrWhiteSpace(status))
@@ -76,8 +78,30 @@ public sealed class ListingService : IListingService
             statusFilter = parsed;
         }
 
+        DietType? dietFilter = null;
+        if (!string.IsNullOrWhiteSpace(dietType))
+        {
+            if (!Enum.TryParse<DietType>(dietType, true, out var parsedDiet))
+            {
+                return Result.Failure<PagedResult<ListingSummaryResponse>>($"Unknown dietType '{dietType}'.");
+            }
+
+            dietFilter = parsedDiet;
+        }
+
+        MealType? mealFilter = null;
+        if (!string.IsNullOrWhiteSpace(mealType))
+        {
+            if (!Enum.TryParse<MealType>(mealType, true, out var parsedMeal))
+            {
+                return Result.Failure<PagedResult<ListingSummaryResponse>>($"Unknown mealType '{mealType}'.");
+            }
+
+            mealFilter = parsedMeal;
+        }
+
         var (normalizedPage, normalizedPageSize) = PaginationHelper.Normalize(page, pageSize);
-        var (items, totalCount) = await _listingRepository.GetByDonorAsync(_currentUser.UserId, statusFilter, normalizedPage, normalizedPageSize, cancellationToken);
+        var (items, totalCount) = await _listingRepository.GetByDonorAsync(_currentUser.UserId, statusFilter, dietFilter, mealFilter, normalizedPage, normalizedPageSize, cancellationToken);
 
         var summaries = items.Select(l => l.ToSummaryResponse()).ToList();
         return Result.Success(new PagedResult<ListingSummaryResponse>(summaries, totalCount, normalizedPage, normalizedPageSize));
@@ -89,7 +113,7 @@ public sealed class ListingService : IListingService
         var images = await _listingRepository.GetImagesAsync(listingId, cancellationToken);
         var timeline = await _listingRepository.GetTimelineAsync(listingId, cancellationToken);
 
-        return Result.Success(listing.ToResponse(images, timeline));
+        return Result.Success(await listing.ToResponseAsync(images, timeline, _userRepository, cancellationToken));
     }
 
     public async Task<Result<ListingResponse>> UpdateAsync(Guid listingId, UpdateListingRequest request, CancellationToken cancellationToken = default)
@@ -114,7 +138,7 @@ public sealed class ListingService : IListingService
 
         var images = await _listingRepository.GetImagesAsync(listingId, cancellationToken);
         var timeline = await _listingRepository.GetTimelineAsync(listingId, cancellationToken);
-        return Result.Success(listing.ToResponse(images, timeline), "Listing updated successfully.");
+        return Result.Success(await listing.ToResponseAsync(images, timeline, _userRepository, cancellationToken), "Listing updated successfully.");
     }
 
     public async Task<Result<ListingResponse>> CancelAsync(Guid listingId, CancellationToken cancellationToken = default)
@@ -140,7 +164,7 @@ public sealed class ListingService : IListingService
 
         var images = await _listingRepository.GetImagesAsync(listingId, cancellationToken);
         var timeline = await _listingRepository.GetTimelineAsync(listingId, cancellationToken);
-        return Result.Success(listing.ToResponse(images, timeline), "Listing cancelled successfully.");
+        return Result.Success(await listing.ToResponseAsync(images, timeline, _userRepository, cancellationToken), "Listing cancelled successfully.");
     }
 
     public async Task<Result<ListingImageUploadResponse>> UploadImageAsync(Guid listingId, Stream fileContent, string fileExtension, long fileSizeBytes, CancellationToken cancellationToken = default)
