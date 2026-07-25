@@ -56,6 +56,11 @@ try
 
     var builder = WebApplication.CreateBuilder(args);
 
+    // 10MB ceiling: comfortably above the largest real upload (5MB listing/pickup/delivery
+    // photos) plus JSON overhead, while still rejecting grossly oversized bodies before they're
+    // fully buffered. Per-endpoint [RequestSizeLimit] on the 4 upload actions is tighter still.
+    builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = 10 * 1024 * 1024);
+
     builder.Host.UseSerilog((context, services, configuration) => configuration
         .ReadFrom.Configuration(context.Configuration)
         .ReadFrom.Services(services)

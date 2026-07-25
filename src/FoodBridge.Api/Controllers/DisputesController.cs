@@ -3,6 +3,7 @@ using FoodBridge.Application.Common;
 using FoodBridge.Application.Disputes;
 using FoodBridge.Application.Disputes.Dtos;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
 namespace FoodBridge.Api.Controllers;
@@ -14,6 +15,9 @@ namespace FoodBridge.Api.Controllers;
 /// </summary>
 [Authorize(Policy = "AdminOnly")]
 [Route("api/disputes")]
+[ProducesResponseType(StatusCodes.Status401Unauthorized)]
+[ProducesResponseType(StatusCodes.Status403Forbidden)]
+[ProducesResponseType(StatusCodes.Status500InternalServerError)]
 public sealed class DisputesController : BaseController
 {
     private readonly IDisputeService _disputeService;
@@ -26,6 +30,7 @@ public sealed class DisputesController : BaseController
     }
 
     [HttpGet]
+    [ProducesResponseType(typeof(PagedResponse<DisputeResponse>), StatusCodes.Status200OK)]
     public async Task<ActionResult<PagedResponse<DisputeResponse>>> GetAll(
         [FromQuery] string? status,
         [FromQuery] int page = 1,
@@ -37,6 +42,10 @@ public sealed class DisputesController : BaseController
     }
 
     [HttpPatch("{id:guid}/resolve")]
+    [ProducesResponseType(typeof(ApiResponse<DisputeResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
     public async Task<ActionResult<ApiResponse<DisputeResponse>>> Resolve(Guid id, [FromBody] ResolveDisputeRequest request, CancellationToken cancellationToken)
     {
         await _resolveValidator.ValidateAndThrowAsync(request, cancellationToken);

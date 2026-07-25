@@ -2,6 +2,7 @@ using FoodBridge.Application.Certificates;
 using FoodBridge.Application.Certificates.Dtos;
 using FoodBridge.Application.Common;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
 namespace FoodBridge.Api.Controllers;
@@ -11,6 +12,9 @@ namespace FoodBridge.Api.Controllers;
 /// </summary>
 [Authorize(Policy = "DonorOnly")]
 [Route("api/certificates")]
+[ProducesResponseType(StatusCodes.Status401Unauthorized)]
+[ProducesResponseType(StatusCodes.Status403Forbidden)]
+[ProducesResponseType(StatusCodes.Status500InternalServerError)]
 public sealed class CertificatesController : BaseController
 {
     private readonly ICertificateService _certificateService;
@@ -21,6 +25,7 @@ public sealed class CertificatesController : BaseController
     }
 
     [HttpGet]
+    [ProducesResponseType(typeof(PagedResponse<CertificateResponse>), StatusCodes.Status200OK)]
     public async Task<ActionResult<PagedResponse<CertificateResponse>>> GetMyCertificates(
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 20,
@@ -31,6 +36,8 @@ public sealed class CertificatesController : BaseController
     }
 
     [HttpGet("{id:guid}")]
+    [ProducesResponseType(typeof(ApiResponse<CertificateResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<ApiResponse<CertificateResponse>>> GetById(Guid id, CancellationToken cancellationToken)
     {
         var result = await _certificateService.GetByIdAsync(id, cancellationToken);
@@ -43,6 +50,8 @@ public sealed class CertificatesController : BaseController
     /// exception middleware exactly like every other endpoint.
     /// </summary>
     [HttpGet("{id:guid}/pdf")]
+    [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetPdf(Guid id, CancellationToken cancellationToken)
     {
         var pdfBytes = await _certificateService.GetPdfAsync(id, cancellationToken);

@@ -3,6 +3,7 @@ using FoodBridge.Application.Common;
 using FoodBridge.Application.Users;
 using FoodBridge.Application.Users.Dtos;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
 namespace FoodBridge.Api.Controllers;
@@ -12,6 +13,8 @@ namespace FoodBridge.Api.Controllers;
 /// </summary>
 [Authorize]
 [Route("api/users")]
+[ProducesResponseType(StatusCodes.Status401Unauthorized)]
+[ProducesResponseType(StatusCodes.Status500InternalServerError)]
 public sealed class UsersController : BaseController
 {
     private readonly IUserService _userService;
@@ -27,6 +30,9 @@ public sealed class UsersController : BaseController
     /// Returns a user's profile. Callable by the user themselves or an Admin.
     /// </summary>
     [HttpGet("{id:guid}")]
+    [ProducesResponseType(typeof(ApiResponse<UserProfileResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<ApiResponse<UserProfileResponse>>> GetById(Guid id, CancellationToken cancellationToken)
     {
         var result = await _userService.GetProfileAsync(id, cancellationToken);
@@ -38,6 +44,10 @@ public sealed class UsersController : BaseController
     /// updates the underlying geography column.
     /// </summary>
     [HttpPut("{id:guid}")]
+    [ProducesResponseType(typeof(ApiResponse<UserProfileResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<ApiResponse<UserProfileResponse>>> Update(Guid id, [FromBody] UpdateUserRequest request, CancellationToken cancellationToken)
     {
         await _updateUserValidator.ValidateAndThrowAsync(request, cancellationToken);
@@ -49,6 +59,9 @@ public sealed class UsersController : BaseController
     /// Toggles availability. Self only; volunteers and recipients only.
     /// </summary>
     [HttpPatch("{id:guid}/availability")]
+    [ProducesResponseType(typeof(ApiResponse<UserProfileResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<ApiResponse<UserProfileResponse>>> UpdateAvailability(Guid id, [FromBody] UpdateAvailabilityRequest request, CancellationToken cancellationToken)
     {
         var result = await _userService.UpdateAvailabilityAsync(id, request, cancellationToken);
@@ -60,6 +73,12 @@ public sealed class UsersController : BaseController
     /// </summary>
     [HttpPost("{id:guid}/avatar")]
     [Consumes("multipart/form-data")]
+    [RequestSizeLimit(2 * 1024 * 1024)]
+    [ProducesResponseType(typeof(ApiResponse<AvatarUploadResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
     public async Task<ActionResult<ApiResponse<AvatarUploadResponse>>> UploadAvatar(Guid id, IFormFile? file, CancellationToken cancellationToken)
     {
         if (file is null || file.Length == 0)

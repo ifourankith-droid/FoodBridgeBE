@@ -4,6 +4,7 @@ using FoodBridge.Application.Auth;
 using FoodBridge.Application.Auth.Dtos;
 using FoodBridge.Application.Common;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
 namespace FoodBridge.Api.Controllers;
@@ -12,6 +13,7 @@ namespace FoodBridge.Api.Controllers;
 /// OTP-based login/registration and JWT issuance.
 /// </summary>
 [Route("api/auth")]
+[ProducesResponseType(StatusCodes.Status500InternalServerError)]
 public sealed class AuthController : BaseController
 {
     private readonly IAuthService _authService;
@@ -38,6 +40,9 @@ public sealed class AuthController : BaseController
     /// Sends a 6-digit OTP to the given mobile number (max 3 per 15 minutes).
     /// </summary>
     [HttpPost("send-otp")]
+    [ProducesResponseType(typeof(ApiResponse<object?>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
     public async Task<ActionResult<ApiResponse<object?>>> SendOtp([FromBody] SendOtpRequest request, CancellationToken cancellationToken)
     {
         await _sendOtpValidator.ValidateAndThrowAsync(request, cancellationToken);
@@ -50,6 +55,9 @@ public sealed class AuthController : BaseController
     /// short-lived registration session token when the mobile has no account yet.
     /// </summary>
     [HttpPost("verify-otp")]
+    [ProducesResponseType(typeof(ApiResponse<VerifyOtpResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
     public async Task<ActionResult<ApiResponse<VerifyOtpResponse>>> VerifyOtp([FromBody] VerifyOtpRequest request, CancellationToken cancellationToken)
     {
         await _verifyOtpValidator.ValidateAndThrowAsync(request, cancellationToken);
@@ -61,6 +69,10 @@ public sealed class AuthController : BaseController
     /// Completes registration for a mobile that was just OTP-verified.
     /// </summary>
     [HttpPost("register")]
+    [ProducesResponseType(typeof(ApiResponse<AuthResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
     public async Task<ActionResult<ApiResponse<AuthResponse>>> Register([FromBody] RegisterRequest request, CancellationToken cancellationToken)
     {
         await _registerValidator.ValidateAndThrowAsync(request, cancellationToken);
@@ -73,6 +85,8 @@ public sealed class AuthController : BaseController
     /// </summary>
     [Authorize]
     [HttpPost("logout")]
+    [ProducesResponseType(typeof(ApiResponse<object?>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<ActionResult<ApiResponse<object?>>> Logout(CancellationToken cancellationToken)
     {
         var result = await _authService.LogoutAsync(_currentUser.TokenId, _currentUser.TokenExpiresAtUtc, cancellationToken);
@@ -84,6 +98,9 @@ public sealed class AuthController : BaseController
     /// </summary>
     [Authorize]
     [HttpGet("me")]
+    [ProducesResponseType(typeof(ApiResponse<UserResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<ApiResponse<UserResponse>>> Me(CancellationToken cancellationToken)
     {
         var result = await _authService.GetMeAsync(_currentUser.UserId, cancellationToken);

@@ -14,16 +14,16 @@ public class PagedResponse<T> : ApiResponse<IReadOnlyList<T>>
         int totalCount,
         string message = "Success",
         string traceId = "") => new()
-    {
-        Success = true,
-        Message = message,
-        Data = data,
-        TraceId = traceId,
-        Page = page,
-        PageSize = pageSize,
-        TotalCount = totalCount,
-        TotalPages = pageSize == 0 ? 0 : (int)Math.Ceiling(totalCount / (double)pageSize),
-    };
+        {
+            Success = true,
+            Message = message,
+            Data = data,
+            TraceId = traceId,
+            Page = page,
+            PageSize = pageSize,
+            TotalCount = totalCount,
+            TotalPages = pageSize == 0 ? 0 : (int)Math.Ceiling(totalCount / (double)pageSize),
+        };
 
     public static new PagedResponse<T> Fail(string message, IReadOnlyList<string>? errors = null, string traceId = "") => new()
     {

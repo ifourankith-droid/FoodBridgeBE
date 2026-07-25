@@ -2,6 +2,7 @@ using FoodBridge.Application.Common;
 using FoodBridge.Application.Leaderboard;
 using FoodBridge.Application.Leaderboard.Dtos;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
 namespace FoodBridge.Api.Controllers;
@@ -11,6 +12,8 @@ namespace FoodBridge.Api.Controllers;
 /// </summary>
 [Authorize]
 [Route("api/leaderboard")]
+[ProducesResponseType(StatusCodes.Status401Unauthorized)]
+[ProducesResponseType(StatusCodes.Status500InternalServerError)]
 public sealed class LeaderboardController : BaseController
 {
     private readonly ILeaderboardService _leaderboardService;
@@ -21,6 +24,7 @@ public sealed class LeaderboardController : BaseController
     }
 
     [HttpGet]
+    [ProducesResponseType(typeof(PagedResponse<LeaderboardEntryResponse>), StatusCodes.Status200OK)]
     public async Task<ActionResult<PagedResponse<LeaderboardEntryResponse>>> GetLeaderboard(
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 20,
@@ -33,6 +37,8 @@ public sealed class LeaderboardController : BaseController
     /// <summary>The caller's own rank. Volunteer only.</summary>
     [Authorize(Policy = "VolunteerOnly")]
     [HttpGet("me")]
+    [ProducesResponseType(typeof(ApiResponse<LeaderboardEntryResponse?>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public async Task<ActionResult<ApiResponse<LeaderboardEntryResponse?>>> GetMyRank(CancellationToken cancellationToken)
     {
         var result = await _leaderboardService.GetMyRankAsync(cancellationToken);

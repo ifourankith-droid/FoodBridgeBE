@@ -4,9 +4,37 @@
 
 ## Solution structure
 
+```
+FoodBridge.sln
+├── src/
+│   ├── FoodBridge.Api/              Controllers (15), SignalR Hubs (2), Middleware (2), Program.cs / DI root
+│   ├── FoodBridge.Application/      Service interfaces + implementations, DTOs, FluentValidation validators, Common helpers
+│   ├── FoodBridge.Domain/           Entities, Enums, domain exceptions, ListingStateMachine. Zero external dependencies.
+│   ├── FoodBridge.Infrastructure/   Dapper repositories, IDbConnectionFactory, adapters (Sms, Storage, Pdf, Geocoding, Tracking)
+│   └── FoodBridge.Migrations/       FluentMigrator migrations — console-runnable and run on API startup
+├── docs/                            ARCHITECTURE.md, API-CONTRACTS.md, PLAN.md (this file)
+└── FoodBridge.http                  REST Client sample requests, one section per phase/resource
+```
+
+Ten phases landed in order (Phase 0 scaffold through Phase 9 Admin, then this Phase 10 hardening pass); `docs/PLAN.md` tracks each phase's acceptance criteria as they were verified live.
+
 ## Layer responsibilities & dependency rule
 
+`Api → Application → Domain`; `Infrastructure → Application + Domain`; `Api → Infrastructure` only inside `Program.cs`'s DI composition — no controller, service, or hub ever references an `Infrastructure` type directly. `Domain` references nothing outside the BCL, so `ListingStateMachine`, entities, enums, and domain exceptions are usable from every other layer without pulling in Dapper, ASP.NET Core, or SignalR.
+
+- **Api** — `Controllers` translate HTTP ↔ service calls only (`BaseController.HandleResult`/`HandlePagedResult` keep every action 3–5 lines); `Hubs` are the SignalR equivalent of controllers; `Program.cs` is the only file allowed to reference both `Application` and `Infrastructure` (DI registration) and is also where all cross-cutting ASP.NET Core config lives (Kestrel limits, CORS, JWT bearer options, middleware order).
+- **Application** — one service per bounded concern (`ListingService`, `VolunteerListingService`, `RecipientListingService`, `AdminService`, ...), each depending only on repository *interfaces* (`Application/Abstractions`) and other services/helpers in `Application/Common`. Contains DTOs (`Requests`/`Responses`), FluentValidation validators, and the `Result<T>` pattern services use to report expected business failures without throwing.
+- **Domain** — `Entities`, `Enums`, domain exceptions (`NotFoundException`, `BusinessRuleException`, `ConflictException`, `RateLimitExceededException`), and `StateMachines/ListingStateMachine`. No knowledge of HTTP, SQL, or DI.
+- **Infrastructure** — `Repositories` (Dapper, one interface implementation each), `IDbConnectionFactory`/`SqlConnectionFactory`, and the swappable adapters CLAUDE.md's Open/Closed guidance calls for: `MockSmsProvider`, `LocalFileStorage`, `QuestPdfCertificateGenerator`, `MockGeocodingProvider`, `InMemoryTrackingStore`, `InMemoryTokenDenylist`.
+- **One documented exception to the "Infrastructure implements Application interfaces" pattern**: `SignalRNotificationDispatcher` (implementing `INotificationDispatcher`) lives in `Api`, not `Infrastructure`, because it depends on `IHubContext<NotificationsHub>` — `NotificationsHub` is an ASP.NET Core SignalR endpoint, the same category of thing as a Controller. Wiring in `Program.cs` is identical to every other provider (`AddScoped<INotificationDispatcher, SignalRNotificationDispatcher>()`); only the implementation's assembly differs.
+
 ## SOLID in practice
+
+- **S — Single Responsibility.** Controllers never contain business logic or SQL — every action is a validator call plus one service call, translated by `BaseController`. Donor-side, Volunteer-side, and Recipient-side listing actions are three separate controllers/services (`ListingsController`/`ListingService`, `VolunteerListingsController`/`VolunteerListingService`, `RecipientListingsController`/`RecipientListingService`) even though all three operate on the same `Listing` aggregate — a donor cancelling their own listing and a volunteer claiming someone else's are different reasons to change.
+- **O — Open/Closed.** Every provider CLAUDE.md calls out is an interface with a swappable implementation, with zero consumer changes needed to swap it: `ISmsProvider`/`MockSmsProvider`, `IFileStorage`/`LocalFileStorage`, `IPdfGenerator`/`QuestPdfCertificateGenerator`, `IGeocodingProvider`/`MockGeocodingProvider`, `INotificationDispatcher`/`SignalRNotificationDispatcher`. A real SMS gateway or Google Maps geocoder plugs in by adding one new class and one `Program.cs` line, not by editing the services that consume them.
+- **L — Liskov.** No interface implementation anywhere throws `NotImplementedException` — verified by grep (none found). Every `Result<T>`-returning service method can be substituted with a fake in a test without changing caller expectations, since the contract (`IsSuccess`/`Data`/`Message`/`Errors`) is uniform across every service.
+- **I — Interface Segregation.** Read-heavy cross-cutting concerns got their own narrow interfaces instead of bloating the aggregate repositories: `IRecipientReader` (not a new `IUserRepository` method), `ILeaderboardReader`, `IReportsReader`, `INotificationRepository`, `ICertificateRepository`, `IAdminRepository`, `IDisputeRepository` are all separate from `IListingRepository`/`IUserRepository`, matching CLAUDE.md's explicit "`IListingRepository` must not contain user methods" / "`ILeaderboardReader`" example verbatim.
+- **D — Dependency Inversion.** Every service takes repository/helper *interfaces* through its constructor (`IListingRepository`, `IClock`, `ICurrentUser`, `IRecipientMatcher`, ...) — none of them `new` up a repository, a `DateTime.UtcNow` call, or an HTTP context accessor directly. `Program.cs` is the sole place concrete `Infrastructure`/`Api` types get bound to those interfaces.
 
 ## Listing lifecycle (state machine)
 
@@ -269,6 +297,35 @@ Development-only (`[Profile("Development")]`), demo city: Ahmedabad, Gujarat. 1 
 
 ## Sequence diagram — happy path
 
+```mermaid
+sequenceDiagram
+    actor Donor
+    actor Volunteer
+    actor Recipient
+    participant API as FoodBridge API
+    participant DB as SQL Server
+    participant Hub as NotificationsHub
+
+    Donor->>API: POST /api/listings (create)
+    API->>DB: INSERT Listings (Status=Pending) + ListingTimeline
+    Volunteer->>API: GET /api/listings/nearby
+    API->>DB: nearby Pending listings by geography distance
+    Volunteer->>API: POST /api/listings/{id}/claim
+    API->>DB: conditional UPDATE ... WHERE Status=Pending (Pending→Claimed)
+    Volunteer->>API: POST /api/listings/{id}/confirm-pickup (photo)
+    API->>DB: RecipientMatcher finds nearest available Verified recipient; Claimed→PickedUp
+    Volunteer->>API: POST /api/listings/{id}/confirm-delivery (photo)
+    API->>DB: PickedUp→Delivered
+    Recipient->>API: POST /api/listings/{id}/accept
+    Recipient->>API: POST /api/listings/{id}/confirm-receipt
+    API->>DB: one transaction: Delivered→Confirmed + VolunteerPoints + Certificates + 2x Notifications
+    API->>Hub: DispatchAsync (after commit)
+    Hub-->>Donor: ReceiveNotification (DonationConfirmed)
+    Hub-->>Volunteer: ReceiveNotification (PointsAwarded)
+```
+
+If the recipient rejects instead of accepting, `RecipientMatcher` re-runs excluding everyone who has already rejected this listing, looping back to "awaiting decision" for the newly-matched recipient (or `recipientId: null` if none remain). If the volunteer never claims before `PickupDeadlineUtc`, `ListingExpiryBackgroundService` flips `Pending → Expired` on its next 30-second sweep instead.
+
 ## Real-time (SignalR) contract
 
 Both hubs require a JWT — the standard `Authorization: Bearer` header for plain requests, or an `access_token` query-string parameter for the hub connection itself, since WebSocket/SSE transports can't set custom headers during the handshake. `Program.cs`'s `JwtBearerEvents.OnMessageReceived` only honors that query-string fallback for paths under `/hubs`; everywhere else it's ignored.
@@ -333,3 +390,13 @@ Verified live with a real two-connection `Microsoft.AspNetCore.SignalR.Client` h
 - **`IAdminRepository.GetDashboardStatsAsync`'s `Status IN @InFlightStatuses` filter needed `int[]`, not `byte[]`, for the parameter — found via a live 500 error, not anticipated.** Dapper's automatic "expand this parameter into `IN (@p1, @p2, ...)`" logic special-cases `byte[]` as a single scalar `varbinary` value (a legitimate, unambiguous SQL type on its own), so it never entered the list-expansion path — the query hit SQL Server with `IN @InFlightStatuses` still literally in the text, which SQL Server can't parse. Every other list-style repository method in this codebase (`GetIncomingForRecipientAsync`, etc.) filters on a single status value, not a list, so this is the first place the bug could have surfaced. Fixed by using `int[]` for this one parameter; the `Status` column itself is still `tinyint`, and SQL Server compares the `int` values against it without issue.
 
 ## Roadmap
+
+Deferred items, each already flagged inline where the tradeoff was made rather than discovered here for the first time:
+
+- **Raise-a-dispute endpoint.** `Disputes.RaisedByUserId` exists in the Phase 1 schema, but no phase wired a user-facing "report an issue" flow — Phase 9 built moderation (list/resolve) only, since it's titled "Admin module." A future phase would add e.g. `POST /api/listings/{id}/dispute` for the donor/volunteer/recipient involved.
+- **Explicit "un-suspend" action.** `AdminService.VerifyAccountAsync` doubles as the only way to reverse a suspension today (any status → Verified, unconditionally). A dedicated `reinstate` endpoint with its own audit trail would be clearer if disputes/suspensions become frequent.
+- **`ITrackingStore`/`ITokenDenylist` are in-memory, single-instance only.** Both are `ConcurrentDictionary`-backed by design (ephemeral, high-frequency, not worth a DB write) but that means a multi-instance/load-balanced deployment would lose live tracking state and token revocations on failover. A Redis-backed implementation behind the same interfaces would be a drop-in swap.
+- **`IGeocodingProvider`/`MockGeocodingProvider` is a hardcoded Ahmedabad locality table**, not a real geocoding API. Swapping in Google Maps/Mapbox behind the existing interface needs zero consumer changes.
+- **Certificate numbering's `SELECT COUNT(*)`-based per-month sequence has a known, accepted race** under truly concurrent `confirm-receipt` calls in the same month/millisecond. A row-locked counter table or a per-month-resetting mechanism would close it if donation volume grows past "rare, human-paced" events.
+- **CORS is hardcoded to `http://localhost:4200`** (`Program.cs`'s `AllowAngularDev` policy) for the Angular dev server — a real deployment needs this promoted to configuration (`appsettings.Production.json`'s allowed origins) rather than a literal string.
+- **`Jwt:Secret` and `ConnectionStrings:Default` are intentionally absent from `appsettings.Production.json`** — a real deployment must supply them via environment variables (`Jwt__Secret`, `ConnectionStrings__Default`) or a secrets manager; the base `appsettings.json`'s checked-in values are for local dev only and must never reach a real environment unoverridden.

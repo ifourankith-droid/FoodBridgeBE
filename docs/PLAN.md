@@ -111,16 +111,55 @@ Phases run one at a time, in order. A phase is not "done" until its acceptance c
 - [x] Bonus verified live: dashboard stats numerically correct (10 users, 17 listings, 67 meals donated, 3 certificates, etc.); suspending an Admin account or the caller's own account is blocked (422); a real dispute row was listed, resolved, and a second resolve attempt correctly blocked (422).
 
 ## Phase 10 — Documentation, hardening, demo polish
-- [ ] Finish `docs/ARCHITECTURE.md` and `docs/API-CONTRACTS.md`.
-- [ ] Hardening sweep (`[ProducesResponseType]`, request size limits, `appsettings.Production.json`, `dotnet format`).
-- [ ] Demo script in `PLAN.md`.
-- [ ] Final self-review.
+- [x] Finish `docs/ARCHITECTURE.md` and `docs/API-CONTRACTS.md`. (`API-CONTRACTS.md` was already complete as of Phase 9; `ARCHITECTURE.md`'s remaining empty sections — Solution structure, Layer responsibilities, SOLID in practice, Sequence diagram, Roadmap — filled in this phase.)
+- [x] Hardening sweep (`[ProducesResponseType]`, request size limits, `appsettings.Production.json`, `dotnet format`). All ~48 actions across all 15 controllers annotated; Kestrel `MaxRequestBodySize` (10MB) + per-action `[RequestSizeLimit]` on the 4 upload actions; `appsettings.Production.json` added (Warning-level logging, file-only Serilog sink, `MigrateOnStartup: false`, deliberately no `Jwt`/`ConnectionStrings`/`Otp` sections — see decisions log); `dotnet format` run (whitespace-only diff).
+- [x] Demo script in `PLAN.md`.
+- [x] Final self-review.
 
 **Acceptance criteria**
-- [ ] A new developer can clone, set one connection string, press F5, and hit every endpoint from `FoodBridge.http` following only the docs.
-- [ ] Zero build warnings, all phases checked off.
+- [x] A new developer can clone, set one connection string, press F5, and hit every endpoint from `FoodBridge.http` following only the docs.
+- [x] Zero build warnings, all phases checked off.
 
 ---
 
 ## Demo script
-_To be filled in during Phase 10._
+
+Live walkthrough using the seeded Development data (Ahmedabad, Gujarat) and the fixed dev OTP — see `docs/ARCHITECTURE.md`'s "Dev login shortcut" table for the 8 seeded mobiles. Every step below has a matching request in `FoodBridge.http`; run against Swagger UI (`/swagger`) or the `.http` file directly. Start the API with `Database:MigrateOnStartup` enabled once (or run `FoodBridge.Migrations` standalone) so the schema + seed data exist.
+
+### 0. Login shortcut (all roles)
+For any seeded mobile: `POST /api/auth/send-otp {"mobile": "..."}` → `POST /api/auth/verify-otp {"mobile": "...", "code": "123456"}` → copy the returned JWT into Swagger's Authorize button. Repeat once per role you need active (a demo typically keeps a Donor, a Volunteer, a Recipient, and the Admin token open in four browser tabs/Swagger sessions).
+
+### 1. Donor: create and publish a listing
+1. Login as `9999900001` (Green Leaf Restaurant, Donor).
+2. `POST /api/listings` — a fresh listing with a near-future `pickupDeadlineUtc` and real Ahmedabad coordinates.
+3. `POST /api/listings/{id}/images` — attach a food photo (JPG/PNG, ≤5MB).
+4. `GET /api/listings/{id}` — show the timeline already has one `Created` entry.
+5. *Bonus:* `PUT /api/listings/{id}` after claim (see step 2) → 422, proving the state-machine guard.
+
+### 2. Volunteer: claim, pick up, deliver
+1. Login as `9999900003` (Raj Patel, Volunteer).
+2. `GET /api/listings/nearby?latitude=...&longitude=...` — the new listing appears, nearest first.
+3. `POST /api/listings/{id}/claim` — 200. *Bonus:* replay the exact same call in a second tab/token → 409 (race guard).
+4. `POST /api/listings/{id}/confirm-pickup` with a photo — `RecipientMatcher` auto-assigns the nearest available Verified recipient; show `recipientId` populated in the response.
+5. `POST /api/listings/{id}/confirm-delivery` with a photo.
+
+### 3. Recipient: accept and confirm
+1. Login as whichever of `9999900006`/`9999900007` (Hope NGO / Asha Foundation) got matched in step 2.4.
+2. `GET /api/listings/incoming` — the listing is awaiting a decision.
+3. `POST /api/listings/{id}/accept`. *Bonus:* on a different listing, `POST /api/listings/{id}/reject` instead and show auto-reassignment to the other seeded recipient.
+4. `POST /api/listings/{id}/confirm-receipt` — the big atomic step: status → Confirmed, a `VolunteerPoints` row, a `Certificates` row, two `Notifications` rows, all in one transaction.
+5. *Live push:* with both the donor's and volunteer's browser tabs connected to `/hubs/notifications` (JWT via `access_token` query param), this call pushes `DonationConfirmed`/`PointsAwarded` instantly — no page refresh. Same idea for `/hubs/tracking`'s `LocationUpdated` during step 2.
+
+### 4. Impact: certificates, leaderboard, reports
+1. As the Donor: `GET /api/certificates` → `GET /api/certificates/{id}/pdf` — downloads and opens a real PDF.
+2. As anyone: `GET /api/leaderboard` (ranked by `VolunteerPoints`); as the Volunteer, `GET /api/leaderboard/me`.
+3. `GET /api/reports/donor` / `/reports/volunteer` / `/reports/recipient` (role-matched token) — each returns a summary plus a chart-ready `ChartPoint[]` monthly series.
+
+### 5. Admin: moderation and platform view
+1. Login as `9999900000` (FoodBridge Admin).
+2. `GET /api/admin/dashboard` — platform-wide totals.
+3. `GET /api/admin/listings` / `GET /api/admin/accounts` — optionally filtered by `status`/`role`.
+4. `PATCH /api/admin/accounts/{id}/verify` on a `Pending` recipient, then repeat step 2's matching to show it's now eligible.
+5. `GET /api/disputes` / `PATCH /api/disputes/{id}/resolve` on a manually-inserted dispute row (no user-facing "raise" endpoint yet — see roadmap).
+6. `GET /api/reports/platform`.
+7. *Bonus:* replay any admin route with the Donor's token from step 1 → 403 across the board.

@@ -3,6 +3,7 @@ using FoodBridge.Application.Common;
 using FoodBridge.Application.Listings;
 using FoodBridge.Application.Listings.Dtos;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
 namespace FoodBridge.Api.Controllers;
@@ -12,6 +13,9 @@ namespace FoodBridge.Api.Controllers;
 /// </summary>
 [Authorize(Policy = "DonorOnly")]
 [Route("api/listings")]
+[ProducesResponseType(StatusCodes.Status401Unauthorized)]
+[ProducesResponseType(StatusCodes.Status403Forbidden)]
+[ProducesResponseType(StatusCodes.Status500InternalServerError)]
 public sealed class ListingsController : BaseController
 {
     private readonly IListingService _listingService;
@@ -32,6 +36,8 @@ public sealed class ListingsController : BaseController
     /// Creates a new listing, starting in the Pending status.
     /// </summary>
     [HttpPost]
+    [ProducesResponseType(typeof(ApiResponse<ListingResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<ActionResult<ApiResponse<ListingResponse>>> Create([FromBody] CreateListingRequest request, CancellationToken cancellationToken)
     {
         await _createValidator.ValidateAndThrowAsync(request, cancellationToken);
@@ -43,6 +49,7 @@ public sealed class ListingsController : BaseController
     /// Lists the current donor's own listings, optionally filtered by status.
     /// </summary>
     [HttpGet]
+    [ProducesResponseType(typeof(PagedResponse<ListingSummaryResponse>), StatusCodes.Status200OK)]
     public async Task<ActionResult<PagedResponse<ListingSummaryResponse>>> GetMyListings(
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 20,
@@ -57,6 +64,8 @@ public sealed class ListingsController : BaseController
     /// Returns a listing's full detail, including images and timeline. Owning donor only.
     /// </summary>
     [HttpGet("{id:guid}")]
+    [ProducesResponseType(typeof(ApiResponse<ListingResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<ApiResponse<ListingResponse>>> GetById(Guid id, CancellationToken cancellationToken)
     {
         var result = await _listingService.GetByIdAsync(id, cancellationToken);
@@ -67,6 +76,10 @@ public sealed class ListingsController : BaseController
     /// Updates a listing. Owning donor only; only while the listing is Pending (422 otherwise).
     /// </summary>
     [HttpPut("{id:guid}")]
+    [ProducesResponseType(typeof(ApiResponse<ListingResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
     public async Task<ActionResult<ApiResponse<ListingResponse>>> Update(Guid id, [FromBody] UpdateListingRequest request, CancellationToken cancellationToken)
     {
         await _updateValidator.ValidateAndThrowAsync(request, cancellationToken);
@@ -78,6 +91,9 @@ public sealed class ListingsController : BaseController
     /// Cancels a listing. Owning donor only; only while the listing is Pending (422 otherwise).
     /// </summary>
     [HttpPost("{id:guid}/cancel")]
+    [ProducesResponseType(typeof(ApiResponse<ListingResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
     public async Task<ActionResult<ApiResponse<ListingResponse>>> Cancel(Guid id, CancellationToken cancellationToken)
     {
         var result = await _listingService.CancelAsync(id, cancellationToken);
@@ -90,6 +106,11 @@ public sealed class ListingsController : BaseController
     /// </summary>
     [HttpPost("{id:guid}/images")]
     [Consumes("multipart/form-data")]
+    [RequestSizeLimit(5 * 1024 * 1024)]
+    [ProducesResponseType(typeof(ApiResponse<ListingImageUploadResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
     public async Task<ActionResult<ApiResponse<ListingImageUploadResponse>>> UploadImage(Guid id, IFormFile? file, CancellationToken cancellationToken)
     {
         if (file is null || file.Length == 0)

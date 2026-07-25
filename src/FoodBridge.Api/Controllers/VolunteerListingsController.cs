@@ -2,6 +2,7 @@ using FoodBridge.Application.Common;
 using FoodBridge.Application.Listings;
 using FoodBridge.Application.Listings.Dtos;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
 namespace FoodBridge.Api.Controllers;
@@ -11,6 +12,9 @@ namespace FoodBridge.Api.Controllers;
 /// </summary>
 [Authorize(Policy = "VolunteerOnly")]
 [Route("api/listings")]
+[ProducesResponseType(StatusCodes.Status401Unauthorized)]
+[ProducesResponseType(StatusCodes.Status403Forbidden)]
+[ProducesResponseType(StatusCodes.Status500InternalServerError)]
 public sealed class VolunteerListingsController : BaseController
 {
     private readonly IVolunteerListingService _volunteerListingService;
@@ -25,6 +29,8 @@ public sealed class VolunteerListingsController : BaseController
     /// given coordinates, ordered by ascending distance.
     /// </summary>
     [HttpGet("nearby")]
+    [ProducesResponseType(typeof(PagedResponse<ListingNearbyResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
     public async Task<ActionResult<PagedResponse<ListingNearbyResponse>>> GetNearby(
         [FromQuery] decimal latitude,
         [FromQuery] decimal longitude,
@@ -42,6 +48,9 @@ public sealed class VolunteerListingsController : BaseController
     /// under a concurrent race exactly one request succeeds (409 for the loser).
     /// </summary>
     [HttpPost("{id:guid}/claim")]
+    [ProducesResponseType(typeof(ApiResponse<ListingResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<ActionResult<ApiResponse<ListingResponse>>> Claim(Guid id, CancellationToken cancellationToken)
     {
         var result = await _volunteerListingService.ClaimAsync(id, cancellationToken);
@@ -53,6 +62,11 @@ public sealed class VolunteerListingsController : BaseController
     /// </summary>
     [HttpPost("{id:guid}/confirm-pickup")]
     [Consumes("multipart/form-data")]
+    [RequestSizeLimit(5 * 1024 * 1024)]
+    [ProducesResponseType(typeof(ApiResponse<ListingResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
     public async Task<ActionResult<ApiResponse<ListingResponse>>> ConfirmPickup(Guid id, IFormFile? photo, CancellationToken cancellationToken)
     {
         if (photo is null || photo.Length == 0)
@@ -71,6 +85,11 @@ public sealed class VolunteerListingsController : BaseController
     /// </summary>
     [HttpPost("{id:guid}/confirm-delivery")]
     [Consumes("multipart/form-data")]
+    [RequestSizeLimit(5 * 1024 * 1024)]
+    [ProducesResponseType(typeof(ApiResponse<ListingResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
     public async Task<ActionResult<ApiResponse<ListingResponse>>> ConfirmDelivery(Guid id, IFormFile? photo, CancellationToken cancellationToken)
     {
         if (photo is null || photo.Length == 0)
