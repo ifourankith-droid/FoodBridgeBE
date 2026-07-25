@@ -119,7 +119,22 @@ try
 
     builder.Services.AddScoped<IUserRepository, UserRepository>();
     builder.Services.AddScoped<IOtpCodeRepository, OtpCodeRepository>();
-    builder.Services.AddScoped<ISmsProvider, MockSmsProvider>();
+
+    // Real OTP delivery is opt-in: stays MockSmsProvider (logs the code, sends nothing)
+    // until Twilio:Enabled is explicitly set true with real credentials — see
+    // docs/TWILIO_WHATSAPP_SETUP.md. Nothing here changes behavior for anyone who
+    // hasn't configured Twilio.
+    builder.Services.Configure<TwilioSettings>(builder.Configuration.GetSection(TwilioSettings.SectionName));
+    var twilioSettings = builder.Configuration.GetSection(TwilioSettings.SectionName).Get<TwilioSettings>() ?? new TwilioSettings();
+    if (twilioSettings.Enabled)
+    {
+        builder.Services.AddHttpClient<ISmsProvider, TwilioWhatsAppSmsProvider>();
+    }
+    else
+    {
+        builder.Services.AddScoped<ISmsProvider, MockSmsProvider>();
+    }
+
     builder.Services.AddScoped<IJwtTokenGenerator, JwtTokenHelper>();
     builder.Services.AddScoped<IPasswordlessSessionService, PasswordlessSessionHelper>();
     builder.Services.AddSingleton<ITokenDenylist, InMemoryTokenDenylist>();
