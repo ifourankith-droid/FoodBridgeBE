@@ -115,10 +115,56 @@ Content-Type: image/jpeg
 --FoodBridgeBoundary--
 
 
+### --- Donor Addresses ---
+@donorAddressId = PASTE_DONOR_ADDRESS_ID_HERE
+
+### Save a new address (DonorOnly; isDefault clears it on every other saved address)
+POST {{baseUrl}}/api/donor-addresses
+Authorization: Bearer PASTE_DONOR_JWT_HERE
+Content-Type: application/json
+
+{
+  "label": "Main Branch",
+  "address": "C.G. Road, Navrangpura",
+  "latitude": 23.0338,
+  "longitude": 72.5623,
+  "isDefault": true
+}
+
+
+### List my saved addresses (default-first, then newest-first)
+GET {{baseUrl}}/api/donor-addresses?page=1&pageSize=20
+Authorization: Bearer PASTE_DONOR_JWT_HERE
+
+
+### Get a saved address (self only)
+GET {{baseUrl}}/api/donor-addresses/{{donorAddressId}}
+Authorization: Bearer PASTE_DONOR_JWT_HERE
+
+
+### Update a saved address (self only)
+PUT {{baseUrl}}/api/donor-addresses/{{donorAddressId}}
+Authorization: Bearer PASTE_DONOR_JWT_HERE
+Content-Type: application/json
+
+{
+  "label": "Main Branch (Renamed)",
+  "address": "C.G. Road, Navrangpura, Ahmedabad",
+  "latitude": 23.0338,
+  "longitude": 72.5623,
+  "isDefault": true
+}
+
+
+### Delete a saved address (self only; hard delete)
+DELETE {{baseUrl}}/api/donor-addresses/{{donorAddressId}}
+Authorization: Bearer PASTE_DONOR_JWT_HERE
+
+
 ### --- Listings (Donor) ---
 @listingId = PASTE_LISTING_ID_HERE
 
-### Create a listing (DonorOnly)
+### Create a listing (DonorOnly) — freeform address
 POST {{baseUrl}}/api/listings
 Authorization: Bearer PASTE_DONOR_JWT_HERE
 Content-Type: application/json
@@ -135,6 +181,23 @@ Content-Type: application/json
   "pickupAddress": "C.G. Road, Navrangpura",
   "latitude": 23.0338,
   "longitude": 72.5623
+}
+
+
+### Create a listing (DonorOnly) — using a saved address instead
+POST {{baseUrl}}/api/listings
+Authorization: Bearer PASTE_DONOR_JWT_HERE
+Content-Type: application/json
+
+{
+  "title": "Surplus Wedding Catering",
+  "foodType": "Mixed Veg Meals",
+  "dietType": "Veg",
+  "mealType": "Dinner",
+  "quantityMeals": 80,
+  "freshnessTag": "JustCooked",
+  "pickupDeadlineUtc": "2026-07-23T14:00:00Z",
+  "donorAddressId": "{{donorAddressId}}"
 }
 
 

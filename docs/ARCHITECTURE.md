@@ -93,6 +93,17 @@ All tables use `Id uniqueidentifier` primary keys defaulted to `NEWSEQUENTIALID(
 | Attempts | int | default 0 |
 | ConsumedAtUtc | datetime2 | nullable |
 
+### DonorAddresses
+A donor's saved address book — independent of `Users.Address` (one profile address) and `Listings.PickupAddress` (still freeform per listing). Added in `M202607260900_CreateDonorAddressesTable`. No `IsDeleted` (hard delete — see decisions log) and no `geography` column (never used in a distance query; `nearby` still runs entirely off `Listings.Location`).
+| Column | Type | Notes |
+|---|---|---|
+| Id | uniqueidentifier PK | |
+| DonorId | uniqueidentifier FK → Users | index `IX_DonorAddresses_DonorId` |
+| Label | nvarchar(100) | e.g. "Main Branch" |
+| Address | nvarchar(500) | |
+| Latitude / Longitude | decimal(9,6) | |
+| IsDefault | bit | default 0; at most one per donor, enforced in `DonorAddressService`, not a DB constraint |
+
 ### Listings
 | Column | Type | Notes |
 |---|---|---|
@@ -398,6 +409,13 @@ Preceded by a 4-track audit (SQL/data-access security, FluentValidation coverage
 - **`POST /api/listings/{id}/unclaim` added (Claimed → Pending).** CLAUDE.md's own state-machine quick reference lists this transition as supported ("volunteer un-claims — optional"), and `ListingStateMachine.AllowedTransitions` already contained it — it was simply never wired to an endpoint. Assigned-volunteer-only, via the same `ChangeStatusAsync` used by cancel/confirm-pickup/confirm-delivery; naturally blocked (422) once pickup has actually been confirmed, since `PickedUp`'s allowed transitions don't include `Pending`.
 - **`ListingExpiryBackgroundService`'s sweep now also reverts abandoned `Claimed` listings back to `Pending`, not just expiring overdue `Pending` ones.** The audit's most operationally urgent finding: a volunteer who claims and then goes silent left perishable food permanently stuck `Claimed` with no automated recovery — the expiry job only ever looked at `Status = Pending`. Fixed by reusing the *existing, already-legal* `Claimed → Pending` transition (not inventing a `Claimed → Expired` edge CLAUDE.md's fixed state machine doesn't list): `IListingRepository.ExpirePastDeadlineListingsAsync` now runs the revert-to-Pending UPDATE first, then the expire-Pending-past-deadline UPDATE second, in the same transaction — so a just-reverted row (whose deadline is by definition already gone) gets picked up by the second UPDATE too and expires in the same sweep rather than waiting for the next 30-second tick. Return type changed from `IReadOnlyList<Guid>` to `(ExpiredIds, RevertedToPendingIds)` for clearer logging; the single call site (`ListingExpiryBackgroundService`) was updated to match.
 - **`POST /api/disputes` added — raising a dispute, promoted out of the Roadmap rather than left deferred.** The Phase 9 decision to skip this was reasonable *at the time* (scope discipline for an "Admin module" phase), but the completeness audit argued directly that a platform coordinating physical food handoffs between strangers with zero self-service way to report a no-show, spoiled food, or a safety issue is a trust-and-safety gap, not a nice-to-have — and the cost was small since `Disputes`/`DisputeService`/the list-resolve flow already existed. `DisputesController` moved from a single class-level `[Authorize(Policy = "AdminOnly")]` to per-action authorization (`[Authorize]` class-level for the shared 401, `AdminOnly` added individually to `GetAll`/`Resolve`) — the same pattern `ReportsController` already uses for exactly this reason ("every action needs a different role"). `DisputeService.CreateAsync` checks the caller is the listing's `DonorId`/`VolunteerId`/`RecipientId` (403 otherwise) — the same three-way ownership check already used by `TrackingService.GetTrackingAsync`.
+
+### Phase 12 — Donor saved-address book
+
+- **New `DonorAddresses` table + `IDonorAddressRepository`/`DonorAddressService`/`DonorAddressesController` (`/api/donor-addresses`, `DonorOnly`, self only).** Answers a direct question: can a donor have multiple addresses? Before this, `Users.Address` was a single profile address and `Listings.PickupAddress` was freeform-per-listing (so a donor *could* already put a different address on every listing, just by retyping it each time) — there was no reusable "saved address book." Full CRUD (create/list/detail/update/delete), scoped to Donor only per explicit decision (Volunteers/Recipients don't create listings and have no equivalent need today).
+- **`IsDefault` enforced in the service, not a DB constraint.** `DonorAddressService.CreateAsync`/`UpdateAsync` call `IDonorAddressRepository.ClearDefaultAsync` whenever a new address is saved/updated as default, clearing it on every other address the same donor owns — verified live (creating a second default address correctly un-defaults the first). A DB-level `UNIQUE` filtered index enforcing "at most one default per donor" would be more airtight against a future direct-SQL write bypassing the service, but wasn't judged necessary for the service being the only write path today.
+- **Hard delete, not soft.** `DonorAddresses` isn't `Users` or `Listings` — CLAUDE.md's soft-delete convention is scoped to exactly those two tables — so `DELETE /api/donor-addresses/{id}` is a real `DELETE FROM`. Safe because a listing created from a saved address copies its `Address`/`Latitude`/`Longitude` into `Listings.PickupAddress`/`Latitude`/`Longitude` at creation time (no live FK from `Listings` to `DonorAddresses`), so deleting a saved address afterward can never orphan or corrupt an existing listing.
+- **`CreateListingRequest` gains `DonorAddressId` (nullable); `PickupAddress`/`Latitude`/`Longitude` became nullable too.** Exactly one of `DonorAddressId` or the freeform triple must be provided — enforced by two `Must` rules in `CreateListingRequestValidator` (neither → 400; both → 400) rather than silently preferring one over the other, since silently ignoring a client-supplied field is worse than telling them the request is ambiguous. `ListingService.CreateAsync` resolves the saved address (verifying `DonorId` matches the caller — 403 on a mismatch, 404 if it doesn't exist) before ever constructing the `Listing` entity. Old clients that always send the freeform triple directly are unaffected — verified live.
 
 ## Roadmap
 

@@ -14,6 +14,7 @@ using FoodBridge.Application.Auth;
 using FoodBridge.Application.Certificates;
 using FoodBridge.Application.Common;
 using FoodBridge.Application.Disputes;
+using FoodBridge.Application.DonorAddresses;
 using FoodBridge.Application.Geocoding;
 using FoodBridge.Application.Leaderboard;
 using FoodBridge.Application.Listings;
@@ -146,6 +147,9 @@ try
 
     builder.Services.AddScoped<IListingRepository, ListingRepository>();
     builder.Services.AddScoped<IListingService, ListingService>();
+
+    builder.Services.AddScoped<IDonorAddressRepository, DonorAddressRepository>();
+    builder.Services.AddScoped<IDonorAddressService, DonorAddressService>();
 
     builder.Services.AddScoped<IRecipientReader, RecipientReader>();
     builder.Services.AddScoped<IRecipientMatcher, RecipientMatcher>();

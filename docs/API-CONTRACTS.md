@@ -13,6 +13,7 @@ See `docs/ARCHITECTURE.md` § Data dictionary → Enum value tables (Role, Accou
 ## Table of contents
 - [Auth](#auth) — send-otp, verify-otp, register, logout, me
 - [Users](#users) — get/update profile, availability, avatar
+- [Donor Addresses](#donor-addresses) — create, list, detail, update, delete a saved address book
 - [Listings — Donor](#listings--donor) — create, list, detail, update, cancel, image upload
 - [Listings — Volunteer](#listings--volunteer) — nearby, claim, unclaim, confirm-pickup, confirm-delivery
 - [Listings — Recipient](#listings--recipient) — incoming, accept, reject, confirm-receipt, history
@@ -179,13 +180,45 @@ Success (200):
 ```
 The returned URL is directly servable (static files under `wwwroot/uploads`). Errors: 422 — `"Avatar must be 2MB or smaller."` / `"Avatar must be a JPG or PNG image."`; 400 if no file attached.
 
+## Donor Addresses
+All 5 endpoints route under `/api/donor-addresses` and require `[Authorize(Policy = "DonorOnly")]` — self only throughout, enforced in `DonorAddressService` via `ICurrentUser`. A donor's saved address book, independent of `Users.Address` (a single profile address) and `Listings.PickupAddress` (still freeform per listing) — lets a donor with multiple locations (e.g. restaurant branches) save each once and reuse it on `POST /api/listings` via `donorAddressId` instead of retyping it every time.
+
+### POST /api/donor-addresses
+Saves a new address. Setting `isDefault: true` clears it on every other address the caller owns (only one default at a time).
+
+Request:
+```json
+{ "label": "Main Branch", "address": "C.G. Road, Navrangpura", "latitude": 23.0338, "longitude": 72.5623, "isDefault": true }
+```
+Success (200):
+```json
+{ "success": true, "message": "Address saved successfully.", "traceId": "...", "data": { "id": "...", "label": "Main Branch", "address": "C.G. Road, Navrangpura", "latitude": 23.0338, "longitude": 72.5623, "isDefault": true, "createdAtUtc": "...", "updatedAtUtc": "..." } }
+```
+400 — validation (missing label/address, out-of-range lat/lng).
+
+### GET /api/donor-addresses
+Lists the caller's own saved addresses, default-first then newest-first. Query params: `page` (default 1), `pageSize` (default 20, max 100).
+
+Success (200) — `PagedResponse<DonorAddressResponse>` (same item shape as create's response).
+
+### GET /api/donor-addresses/{id}
+Self only. Success (200): a single `DonorAddressResponse`. 403 — belongs to a different donor; 404 — no such address.
+
+### PUT /api/donor-addresses/{id}
+Self only. Request: same shape as create. Success (200): the updated `DonorAddressResponse`. Errors: same as create, plus 403/404 as above.
+
+### DELETE /api/donor-addresses/{id}
+Self only. Hard delete — `DonorAddresses` isn't one of the two tables (`Users`, `Listings`) CLAUDE.md's soft-delete convention covers, and nothing else references a saved address by id (listings that used one already copied its `pickupAddress`/`latitude`/`longitude` at creation time, so deleting the saved address afterward doesn't affect any existing listing).
+
+No request body. Success (200): empty `data`. 403 — belongs to a different donor; 404 — no such address.
+
 ## Listings — Donor
 All 6 endpoints route under `/api/listings` and require `[Authorize(Policy = "DonorOnly")]` — any non-Donor role gets 403 on every route. Beyond the role check, ownership (a donor can only see/edit their own listings) is enforced in `ListingService` via `ICurrentUser`, not the policy. `FreshnessTag`, `DietType`, and `MealType` are passed/returned as their enum **string name** — see `docs/ARCHITECTURE.md` § Data dictionary → Enum value tables.
 
 ### POST /api/listings
-Creates a new listing, starting in the `Pending` status. `dietType`/`mealType` are optional (nullable); `freshnessTag` is required.
+Creates a new listing, starting in the `Pending` status. `dietType`/`mealType` are optional (nullable); `freshnessTag` is required. The pickup location comes from **either** `donorAddressId` (a saved address from [`GET /api/donor-addresses`](#donor-addresses)) **or** `pickupAddress`+`latitude`+`longitude` together — exactly one path, never both, never neither.
 
-Request:
+Request (freeform address):
 ```json
 {
   "title": "Surplus Wedding Catering",
@@ -201,9 +234,13 @@ Request:
   "longitude": 72.5623
 }
 ```
-Success (200): a `ListingResponse` (see `GET /api/listings/{id}` below) with `status: "Pending"`, empty `images`, and a single `timeline` entry (`fromStatus: null` → `toStatus: "Pending"`).
+Request (saved address instead — same fields otherwise):
+```json
+{ "...": "same as above, minus pickupAddress/latitude/longitude", "donorAddressId": "..." }
+```
+Success (200): a `ListingResponse` (see `GET /api/listings/{id}` below) with `status: "Pending"`, `pickupAddress`/`latitude`/`longitude` resolved from whichever path was used, empty `images`, and a single `timeline` entry (`fromStatus: null` → `toStatus: "Pending"`).
 
-Errors: 400 — validation (bad enum name, non-future deadline before `preparedAtUtc`, out-of-range lat/lng, etc.); 403 — caller isn't a Donor.
+Errors: 400 — validation (bad enum name, non-future deadline before `preparedAtUtc`, out-of-range lat/lng, neither/both of `donorAddressId` vs. the freeform fields provided); 403 — caller isn't a Donor, or `donorAddressId` belongs to a different donor; 404 — `donorAddressId` doesn't exist.
 
 ### GET /api/listings
 Lists the caller's **own** listings, paginated, optionally filtered by status, diet type, and/or meal type.

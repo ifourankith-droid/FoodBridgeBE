@@ -15,14 +15,22 @@ public sealed class ListingService : IListingService
 
     private readonly IListingRepository _listingRepository;
     private readonly IUserRepository _userRepository;
+    private readonly IDonorAddressRepository _donorAddressRepository;
     private readonly IFileStorage _fileStorage;
     private readonly ICurrentUser _currentUser;
     private readonly IClock _clock;
 
-    public ListingService(IListingRepository listingRepository, IUserRepository userRepository, IFileStorage fileStorage, ICurrentUser currentUser, IClock clock)
+    public ListingService(
+        IListingRepository listingRepository,
+        IUserRepository userRepository,
+        IDonorAddressRepository donorAddressRepository,
+        IFileStorage fileStorage,
+        ICurrentUser currentUser,
+        IClock clock)
     {
         _listingRepository = listingRepository;
         _userRepository = userRepository;
+        _donorAddressRepository = donorAddressRepository;
         _fileStorage = fileStorage;
         _currentUser = currentUser;
         _clock = clock;
@@ -30,6 +38,35 @@ public sealed class ListingService : IListingService
 
     public async Task<Result<ListingResponse>> CreateAsync(CreateListingRequest request, CancellationToken cancellationToken = default)
     {
+        string pickupAddress;
+        decimal latitude;
+        decimal longitude;
+
+        if (request.DonorAddressId.HasValue)
+        {
+            var savedAddress = await _donorAddressRepository.GetByIdAsync(request.DonorAddressId.Value, cancellationToken);
+            if (savedAddress is null)
+            {
+                throw new NotFoundException("DonorAddress", request.DonorAddressId.Value);
+            }
+
+            if (savedAddress.DonorId != _currentUser.UserId)
+            {
+                throw new UnauthorizedAccessException("You can only use your own saved addresses.");
+            }
+
+            pickupAddress = savedAddress.Address;
+            latitude = savedAddress.Latitude;
+            longitude = savedAddress.Longitude;
+        }
+        else
+        {
+            // Validator already guarantees these are set when DonorAddressId isn't.
+            pickupAddress = request.PickupAddress!;
+            latitude = request.Latitude!.Value;
+            longitude = request.Longitude!.Value;
+        }
+
         var now = _clock.UtcNow;
         var listing = new Listing
         {
@@ -42,9 +79,9 @@ public sealed class ListingService : IListingService
             FreshnessTag = Enum.Parse<FreshnessTag>(request.FreshnessTag, true),
             PreparedAtUtc = request.PreparedAtUtc,
             PickupDeadlineUtc = request.PickupDeadlineUtc,
-            PickupAddress = request.PickupAddress,
-            Latitude = request.Latitude,
-            Longitude = request.Longitude,
+            PickupAddress = pickupAddress,
+            Latitude = latitude,
+            Longitude = longitude,
             Status = ListingStatus.Pending,
             IsDeleted = false,
             CreatedAtUtc = now,

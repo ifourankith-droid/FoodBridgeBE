@@ -134,6 +134,17 @@ Phases run one at a time, in order. A phase is not "done" until its acceptance c
 - [x] Full live regression sweep across every module/role, plus the 5 new/changed endpoints — verified live: contact info populates/gates correctly through claim→pickup→delivery→confirm-receipt; diet/meal filters include/exclude correctly and 422 on bad values (both `GET /api/listings` and `nearby`); unclaim works and is ownership-gated (403 for a non-assigned volunteer) and correctly blocked once `PickedUp` (422); the expiry sweep's auto-recovery fired for real against leftover data on startup (`reverted 3 abandoned Claimed listing(s)`, `flipped 4 listing(s) to Expired`); raise-dispute succeeds for the donor and the volunteer (both parties), 403 for an uninvolved donor, then Admin lists/resolves it while a non-admin still gets 403 on the browse/resolve routes; certificates/leaderboard/reports/notifications/admin dashboard all still correct after the `ListingResponse` shape change.
 - [x] Two items surfaced by the audit (self-service mobile change, self-service account deletion) deliberately deferred to the Roadmap rather than built, since each needs a business-rule decision not specified anywhere — flagged explicitly rather than silently decided.
 
+## Phase 12 — Donor saved-address book
+- [x] New `DonorAddresses` table (`M202607260900_CreateDonorAddressesTable`) + full CRUD: `POST`/`GET`/`GET {id}`/`PUT {id}`/`DELETE {id}` under `/api/donor-addresses`, `DonorOnly`, self only.
+- [x] `IsDefault` flag, at most one per donor, enforced in `DonorAddressService` (clears every other address's default on save/update).
+- [x] `POST /api/listings` wired to use a saved address via optional `donorAddressId`, as an alternative to the existing freeform `pickupAddress`/`latitude`/`longitude` — exactly one of the two paths required, enforced by validation (400 on neither or both).
+- [x] Docs updated in the same phase: `docs/API-CONTRACTS.md` (new Donor Addresses section + updated `POST /api/listings`), `FoodBridge.http`, `docs/ARCHITECTURE.md` (data dictionary + decisions log).
+
+**Acceptance criteria**
+- [x] Zero build warnings.
+- [x] Full CRUD verified live: create two addresses (second correctly clears the first's `isDefault`), get detail, update, delete then confirm 404; cross-donor `GET`/`DELETE` on another donor's address → 403; non-Donor role → 403 on the whole controller.
+- [x] Listing creation verified live both ways: `donorAddressId` correctly resolves to the saved address's `pickupAddress`/`latitude`/`longitude`; neither-provided → 400; both-provided → 400; using another donor's `donorAddressId` → 403; old-style freeform creation still works unchanged (backward compatible).
+
 ---
 
 ## Demo script

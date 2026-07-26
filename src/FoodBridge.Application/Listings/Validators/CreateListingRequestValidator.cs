@@ -20,8 +20,17 @@ public sealed class CreateListingRequestValidator : AbstractValidator<CreateList
         RuleFor(x => x.PickupDeadlineUtc).GreaterThan(x => x.PreparedAtUtc ?? DateTime.MinValue)
             .WithMessage("PickupDeadlineUtc must be after PreparedAtUtc.")
             .When(x => x.PreparedAtUtc.HasValue);
-        RuleFor(x => x.PickupAddress).NotEmpty().MaximumLength(500);
-        RuleFor(x => x.Latitude).InclusiveBetween(-90, 90);
-        RuleFor(x => x.Longitude).InclusiveBetween(-180, 180);
+        RuleFor(x => x)
+            .Must(x => x.DonorAddressId.HasValue || (!string.IsNullOrWhiteSpace(x.PickupAddress) && x.Latitude.HasValue && x.Longitude.HasValue))
+            .WithMessage("Provide either donorAddressId or pickupAddress, latitude, and longitude.")
+            .WithName("DonorAddressId");
+        RuleFor(x => x)
+            .Must(x => !(x.DonorAddressId.HasValue && (x.PickupAddress is not null || x.Latitude.HasValue || x.Longitude.HasValue)))
+            .WithMessage("Provide either donorAddressId or pickupAddress/latitude/longitude, not both.")
+            .WithName("DonorAddressId");
+
+        RuleFor(x => x.PickupAddress).MaximumLength(500);
+        RuleFor(x => x.Latitude).InclusiveBetween(-90, 90).When(x => x.Latitude.HasValue);
+        RuleFor(x => x.Longitude).InclusiveBetween(-180, 180).When(x => x.Longitude.HasValue);
     }
 }
