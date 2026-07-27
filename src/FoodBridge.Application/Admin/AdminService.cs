@@ -23,7 +23,9 @@ public sealed class AdminService : IAdminService
     public async Task<Result<AdminDashboardResponse>> GetDashboardAsync(CancellationToken cancellationToken = default)
     {
         var stats = await _adminRepository.GetDashboardStatsAsync(cancellationToken);
-        return Result.Success(stats.ToResponse());
+        var listingsByStatus = await _adminRepository.GetListingsByStatusAsync(cancellationToken);
+        var accountsByStatus = await _adminRepository.GetAccountsByStatusAsync(cancellationToken);
+        return Result.Success(stats.ToResponse(listingsByStatus, accountsByStatus));
     }
 
     public async Task<Result<PagedResult<AdminListingSummaryResponse>>> GetAllListingsAsync(string? status, int page, int pageSize, CancellationToken cancellationToken = default)

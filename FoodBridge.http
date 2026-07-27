@@ -411,6 +411,24 @@ GET {{baseUrl}}/api/reports/recipient
 Authorization: Bearer PASTE_RECIPIENT_JWT_HERE
 
 
+### --- Dashboard ---
+### One consolidated per-role endpoint, everything the prototype's dashboard screen needs.
+
+### Donor dashboard (latitude/longitude optional; falls back to profile location)
+GET {{baseUrl}}/api/dashboard/donor
+Authorization: Bearer PASTE_DONOR_JWT_HERE
+
+
+### Volunteer dashboard (latitude/longitude optional; falls back to profile location)
+GET {{baseUrl}}/api/dashboard/volunteer
+Authorization: Bearer PASTE_VOLUNTEER_JWT_HERE
+
+
+### Recipient dashboard
+GET {{baseUrl}}/api/dashboard/recipient
+Authorization: Bearer PASTE_RECIPIENT_JWT_HERE
+
+
 ### --- Admin ---
 @userId2 = PASTE_USER_ID_HERE
 @disputeId = PASTE_DISPUTE_ID_HERE

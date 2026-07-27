@@ -51,6 +51,22 @@ SELECT
         return await connection.QuerySingleAsync<AdminDashboardStats>(command);
     }
 
+    public async Task<IReadOnlyList<StatusCount>> GetListingsByStatusAsync(CancellationToken cancellationToken = default)
+    {
+        const string sql = "SELECT Status, COUNT(*) AS Count FROM Listings WHERE IsDeleted = 0 GROUP BY Status;";
+        using var connection = ConnectionFactory.CreateConnection();
+        var command = new CommandDefinition(sql, cancellationToken: cancellationToken);
+        return (await connection.QueryAsync<StatusCount>(command)).ToList();
+    }
+
+    public async Task<IReadOnlyList<StatusCount>> GetAccountsByStatusAsync(CancellationToken cancellationToken = default)
+    {
+        const string sql = "SELECT AccountStatus AS Status, COUNT(*) AS Count FROM Users WHERE IsDeleted = 0 GROUP BY AccountStatus;";
+        using var connection = ConnectionFactory.CreateConnection();
+        var command = new CommandDefinition(sql, cancellationToken: cancellationToken);
+        return (await connection.QueryAsync<StatusCount>(command)).ToList();
+    }
+
     public async Task<(IReadOnlyList<AdminListingSummary> Items, int TotalCount)> GetAllListingsAsync(ListingStatus? status, int page, int pageSize, CancellationToken cancellationToken = default)
     {
         using var connection = ConnectionFactory.CreateConnection();

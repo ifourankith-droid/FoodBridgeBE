@@ -13,4 +13,6 @@ public sealed record AdminDashboardResponse(
     int TotalCertificatesIssued,
     int TotalVolunteerPointsAwarded,
     int OpenDisputes,
-    int ResolvedDisputes);
+    int ResolvedDisputes,
+    IReadOnlyList<StatusCountResponse> ListingsByStatus,
+    IReadOnlyList<StatusCountResponse> AccountsByStatus);

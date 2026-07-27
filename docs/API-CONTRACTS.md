@@ -19,6 +19,7 @@ See `docs/ARCHITECTURE.md` § Data dictionary → Enum value tables (Role, Accou
 - [Listings — Recipient](#listings--recipient) — incoming, accept, reject, confirm-receipt, history
 - [Notifications & real-time (SignalR contract)](#notifications--real-time-signalr-contract) — notifications list/read, tracking, geocode
 - [Certificates, Leaderboard, Reports](#certificates-leaderboard-reports) — certificate list/detail/pdf, leaderboard (+ my-rank), donor/volunteer/recipient reports
+- [Dashboard](#dashboard) — one consolidated per-role dashboard endpoint (Donor/Volunteer/Recipient)
 - [Admin](#admin) — dashboard, listings/accounts browse, verify/suspend, disputes (raise/list/resolve), platform report
 - [Drop-off Locations (Admin)](#drop-off-locations-admin) — create, list, activate/deactivate fallback pickup destinations
 
@@ -519,11 +520,66 @@ Success (200):
 
 All three report `*ByMonth` series use the same `{ period: "yyyy-MM", value: number }` shape — directly bindable to a chart with no client-side reshaping.
 
+## Dashboard
+One consolidated, chart-ready endpoint per role under `/api/dashboard` — everything the role's dashboard screen needs in a single call instead of composing it client-side from `reports`/`leaderboard`/`listings`. Each action carries its own role policy (`[Authorize(Policy = "...Only")]`) rather than a shared class-level one.
+
+### GET /api/dashboard/donor
+`DonorOnly`. Query params: `latitude`/`longitude` (both optional) — when omitted, the "nearby recipients" widget falls back to the donor's own registered profile location (`Users.Latitude`/`Longitude`); if neither is available, that widget is just an empty list, not an error.
+
+Success (200):
+```json
+{
+  "success": true, "message": "Success", "traceId": "...",
+  "data": {
+    "totalMealsDonated": 67, "mealsDonatedToday": 12, "totalDonations": 12, "totalCertificates": 3,
+    "mealsDonatedByMonth": [ { "period": "2026-07", "value": 67 } ],
+    "recentActivity": [ { "id": "...", "title": "Surplus Wedding Catering", "foodType": "Mixed Veg Meals", "dietType": "Veg", "mealType": "Dinner", "quantityMeals": 80, "freshnessTag": "JustCooked", "pickupDeadlineUtc": "...", "status": "Pending", "createdAtUtc": "..." } ],
+    "nearbyRecipients": [ { "id": "...", "name": "Hope NGO", "address": "Paldi", "city": "Ahmedabad", "latitude": 23.0089, "longitude": 72.5601, "capacityMeals": 200, "distanceKm": 2.8 } ]
+  }
+}
+```
+`totalMealsDonated`/`totalDonations`/`totalCertificates`/`mealsDonatedByMonth` mirror `GET /api/reports/donor` exactly (same source query). `mealsDonatedToday` sums `quantityMeals` across this donor's `Confirmed` listings whose confirm time falls on today's UTC calendar date — a true daily figure, unlike the report's monthly buckets. `recentActivity` is the 5 most recent of the donor's own listings (same shape as `GET /api/listings`'s list items). `nearbyRecipients` is informational browsing (not a match) — every Verified, non-deleted recipient within 10km, **regardless of their current `isAvailable` flag**, up to 5, nearest first. 422 — `latitude`/`longitude` out of range if explicitly provided.
+
+### GET /api/dashboard/volunteer
+`VolunteerOnly`. Query params: `latitude`/`longitude` (both optional, same fallback-to-profile-location behavior as above, for the "open listings nearby" widget).
+
+Success (200):
+```json
+{
+  "success": true, "message": "Success", "traceId": "...",
+  "data": {
+    "totalDeliveries": 5, "totalPoints": 67, "leaderboardRank": 2, "totalMealsHelped": 67,
+    "deliveriesByMonth": [ { "period": "2026-07", "value": 5 } ],
+    "badges": [ { "code": "FirstDelivery", "name": "First Delivery", "earned": true }, { "code": "TenDeliveries", "name": "10 Deliveries", "earned": false }, { "code": "HundredMeals", "name": "100 Meals", "earned": false } ],
+    "openListingsNearby": [ { "id": "...", "title": "Extra Lunch Boxes", "foodType": "Packaged Meals", "dietType": null, "mealType": null, "quantityMeals": 25, "freshnessTag": "FewHoursOld", "pickupDeadlineUtc": "...", "pickupAddress": "S.G. Highway, Bodakdev", "latitude": 23.0282, "longitude": 72.5061, "distanceKm": 3.6 } ]
+  }
+}
+```
+`totalDeliveries`/`totalPoints`/`deliveriesByMonth` mirror `GET /api/reports/volunteer`; `leaderboardRank` mirrors `GET /api/leaderboard/me` (`null` if this volunteer has never delivered — no `VolunteerPoints` rows yet). `totalMealsHelped` sums `quantityMeals` across this volunteer's own `Confirmed` deliveries — computed independently of the `VolunteerPoints` formula (currently 1 point per meal, so the two numbers coincide today, but `totalMealsHelped` stays correct even if that formula changes later). **`badges` only includes the 3 badges with an objective, data-backed definition** (`totalDeliveries >= 1`, `>= 10`, `totalMealsHelped >= 100`) — computed on the fly, not a persisted achievements table. The prototype's "Speed Runner" and "Night Owl" badges have no measurable criteria anywhere in the domain model (no delivery-speed or time-of-day tracking exists), so they're intentionally not included rather than faked. `openListingsNearby` is the same query as `GET /api/listings/nearby` (10km, `Pending` only), capped to the 5 nearest. 422 — `latitude`/`longitude` out of range if explicitly provided.
+
+### GET /api/dashboard/recipient
+`RecipientOnly`. No query params.
+
+Success (200):
+```json
+{
+  "success": true, "message": "Success", "traceId": "...",
+  "data": {
+    "totalMealsReceived": 117, "totalDeliveriesReceived": 3, "mealsReceivedToday": 20, "upcomingDeliveries": 1,
+    "storageCapacityMeals": 200, "storageUsedPercentToday": 10.0,
+    "mealsReceivedByMonth": [ { "period": "2026-07", "value": 117 } ],
+    "donorDistribution": [ { "donorId": "...", "donorName": "Green Leaf Restaurant", "totalMealsReceived": 80 }, { "donorId": "...", "donorName": "Sunrise Caterers", "totalMealsReceived": 37 } ],
+    "incomingFood": [ { "id": "...", "title": "Corporate Cafeteria Surplus", "foodType": "Mixed Veg Meals", "dietType": "Veg", "mealType": "Lunch", "quantityMeals": 60, "freshnessTag": "JustCooked", "pickupDeadlineUtc": "...", "status": "PickedUp", "createdAtUtc": "..." } ]
+  }
+}
+```
+`totalMealsReceived`/`totalDeliveriesReceived`/`mealsReceivedByMonth` mirror `GET /api/reports/recipient`. `mealsReceivedToday` sums `quantityMeals` across this recipient's `Confirmed` listings confirmed today (UTC calendar date) — a true daily figure the report's monthly buckets can't give you. `upcomingDeliveries` is `GET /api/listings/incoming`'s `totalCount` (listings matched and awaiting this recipient's accept/reject decision). `storageCapacityMeals` is this recipient's own `Users.CapacityMeals`; `storageUsedPercentToday` is `mealsReceivedToday` as a percentage of it, rounded to 1 decimal (`null` if `capacityMeals` isn't set, e.g. a household recipient who never set one). `donorDistribution` breaks down all-time `Confirmed` meals received by donor, highest first, capped to 5. `incomingFood` is the 5 most recent incoming matches (same shape as `GET /api/listings/incoming`'s list items).
+
 ## Admin
 8 of these 9 endpoints require `[Authorize(Policy = "AdminOnly")]` — any non-Admin role gets 403 on every one (verified live with a real Donor JWT swept across all 8 original ones). The exception is `POST /api/disputes` (raise a dispute), open to any authenticated role and gated by listing-ownership in the service instead — see its own entry below. `AdminController`'s browse/moderation actions are nested under `/api/admin`; `DisputesController` is a flat `/api/disputes` resource; the platform report lives on the existing `ReportsController` (`GET /api/reports/platform`) alongside the donor/volunteer/recipient reports from the previous section.
 
 ### GET /api/admin/dashboard
-At-a-glance platform counts.
+At-a-glance platform counts, plus the two status breakdowns needed for the dashboard's charts.
 
 Success (200):
 ```json
@@ -533,11 +589,13 @@ Success (200):
     "totalDonors": 2, "totalVolunteers": 4, "totalRecipients": 3, "pendingRecipients": 1,
     "totalListings": 17, "pendingListings": 0, "activeListings": 8, "confirmedListings": 4,
     "totalMealsDonated": 67, "totalCertificatesIssued": 3, "totalVolunteerPointsAwarded": 67,
-    "openDisputes": 0, "resolvedDisputes": 0
+    "openDisputes": 0, "resolvedDisputes": 0,
+    "listingsByStatus": [ { "status": "Pending", "count": 0 }, { "status": "Claimed", "count": 3 }, { "status": "PickedUp", "count": 2 }, { "status": "Delivered", "count": 3 }, { "status": "Confirmed", "count": 4 }, { "status": "Expired", "count": 1 }, { "status": "Cancelled", "count": 4 } ],
+    "accountsByStatus": [ { "status": "Verified", "count": 8 }, { "status": "Pending", "count": 1 }, { "status": "Suspended", "count": 0 } ]
   }
 }
 ```
-`activeListings` counts `Claimed`+`PickedUp`+`Delivered` (in flight, not yet `Confirmed`).
+`activeListings` counts `Claimed`+`PickedUp`+`Delivered` (in flight, not yet `Confirmed`) — a single collapsed number, whereas `listingsByStatus`/`accountsByStatus` give the full per-status breakdown a bar/doughnut chart needs (only statuses with at least one row appear). Added so the frontend doesn't have to make 9 separate `admin/listings`/`admin/accounts` calls (one per status) just to render two charts.
 
 ### GET /api/admin/listings
 All listings platform-wide (any donor), with the donor's name attached — unlike the donor's own `GET /api/listings`, which is implicitly self-scoped.

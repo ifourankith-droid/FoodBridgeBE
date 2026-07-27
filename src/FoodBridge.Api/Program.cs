@@ -13,6 +13,7 @@ using FoodBridge.Application.Admin;
 using FoodBridge.Application.Auth;
 using FoodBridge.Application.Certificates;
 using FoodBridge.Application.Common;
+using FoodBridge.Application.Dashboard;
 using FoodBridge.Application.Disputes;
 using FoodBridge.Application.DonorAddresses;
 using FoodBridge.Application.DropOffLocations;
@@ -178,6 +179,9 @@ try
 
     builder.Services.AddScoped<IReportsReader, ReportsReader>();
     builder.Services.AddScoped<IReportService, ReportService>();
+
+    builder.Services.AddScoped<IDashboardReader, DashboardReader>();
+    builder.Services.AddScoped<IDashboardService, DashboardService>();
 
     builder.Services.AddScoped<IAdminRepository, AdminRepository>();
     builder.Services.AddScoped<IAdminService, AdminService>();

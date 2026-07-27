@@ -13,6 +13,12 @@ public interface IAdminRepository
 {
     Task<AdminDashboardStats> GetDashboardStatsAsync(CancellationToken cancellationToken = default);
 
+    /// <summary>Row count per Listings.Status value (all 6), for the dashboard's status-breakdown chart.</summary>
+    Task<IReadOnlyList<StatusCount>> GetListingsByStatusAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>Row count per Users.AccountStatus value (Verified/Pending/Suspended), for the dashboard's accounts chart.</summary>
+    Task<IReadOnlyList<StatusCount>> GetAccountsByStatusAsync(CancellationToken cancellationToken = default);
+
     Task<(IReadOnlyList<AdminListingSummary> Items, int TotalCount)> GetAllListingsAsync(ListingStatus? status, int page, int pageSize, CancellationToken cancellationToken = default);
 
     Task<(IReadOnlyList<AdminUserSummary> Items, int TotalCount)> GetAllUsersAsync(UserRole? role, AccountStatus? accountStatus, int page, int pageSize, CancellationToken cancellationToken = default);

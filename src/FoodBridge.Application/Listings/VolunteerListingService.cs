@@ -86,21 +86,7 @@ public sealed class VolunteerListingService : IVolunteerListingService
         var (normalizedPage, normalizedPageSize) = PaginationHelper.Normalize(page, pageSize);
         var (items, totalCount) = await _listingRepository.GetNearbyPendingAsync(latitude, longitude, effectiveRadiusKm * 1000, dietFilter, mealFilter, normalizedPage, normalizedPageSize, cancellationToken);
 
-        var responses = items
-            .Select(i => new ListingNearbyResponse(
-                i.Id,
-                i.Title,
-                i.FoodType,
-                i.DietType?.ToString(),
-                i.MealType?.ToString(),
-                i.QuantityMeals,
-                i.FreshnessTag.ToString(),
-                i.PickupDeadlineUtc,
-                i.PickupAddress,
-                i.Latitude,
-                i.Longitude,
-                Math.Round(i.DistanceMeters / 1000, 2)))
-            .ToList();
+        var responses = items.Select(i => i.ToResponse()).ToList();
 
         return Result.Success(new PagedResult<ListingNearbyResponse>(responses, totalCount, normalizedPage, normalizedPageSize));
     }

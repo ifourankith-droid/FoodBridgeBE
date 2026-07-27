@@ -6,6 +6,20 @@ namespace FoodBridge.Application.Listings;
 
 public static class ListingMapper
 {
+    public static ListingNearbyResponse ToResponse(this NearbyListing listing) => new(
+        listing.Id,
+        listing.Title,
+        listing.FoodType,
+        listing.DietType?.ToString(),
+        listing.MealType?.ToString(),
+        listing.QuantityMeals,
+        listing.FreshnessTag.ToString(),
+        listing.PickupDeadlineUtc,
+        listing.PickupAddress,
+        listing.Latitude,
+        listing.Longitude,
+        Math.Round(listing.DistanceMeters / 1000, 2));
+
     /// <summary>
     /// Builds the full detail response, including the donor's and (once assigned) the
     /// matched volunteer's/recipient's name and mobile, so the parties on a listing can
