@@ -86,4 +86,26 @@ WHERE Id = @Id AND IsDeleted = 0;";
         var command = new CommandDefinition(sql, new { Id = id, AccountStatus = (byte)accountStatus }, cancellationToken: cancellationToken);
         await connection.ExecuteAsync(command);
     }
+
+    public async Task<IReadOnlyList<Guid>> GetNearbyAvailableVolunteerIdsAsync(decimal latitude, decimal longitude, double radiusMeters, CancellationToken cancellationToken = default)
+    {
+        var sql = $@"
+SELECT Id
+FROM Users
+WHERE Role = @Role AND IsAvailable = 1 AND AccountStatus = @VerifiedStatus AND IsDeleted = 0
+    AND Location IS NOT NULL AND Location.STDistance({GeoHelper.PointFromLatLngFragment}) <= @RadiusMeters;";
+
+        var parameters = new
+        {
+            Latitude = latitude,
+            Longitude = longitude,
+            RadiusMeters = radiusMeters,
+            Role = (byte)UserRole.Volunteer,
+            VerifiedStatus = (byte)AccountStatus.Verified,
+        };
+
+        using var connection = ConnectionFactory.CreateConnection();
+        var command = new CommandDefinition(sql, parameters, cancellationToken: cancellationToken);
+        return (await connection.QueryAsync<Guid>(command)).ToList();
+    }
 }

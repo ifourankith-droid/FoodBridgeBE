@@ -9,14 +9,14 @@ namespace FoodBridge.Infrastructure.Repositories;
 public sealed class ListingRepository : BaseRepository, IListingRepository
 {
     private const string SelectSql = @"
-SELECT Id, DonorId, Title, FoodType, DietType, MealType, QuantityMeals, FreshnessTag, PreparedAtUtc, PickupDeadlineUtc, PickupAddress, Latitude, Longitude, Status, VolunteerId, RecipientId, IsDeleted, CreatedAtUtc, UpdatedAtUtc
+SELECT Id, DonorId, Title, FoodType, DietType, MealType, QuantityMeals, FreshnessTag, PreparedAtUtc, PickupDeadlineUtc, PickupAddress, Latitude, Longitude, Status, VolunteerId, RecipientId, EstimatedPickupAtUtc, IsDeleted, CreatedAtUtc, UpdatedAtUtc
 FROM Listings";
 
     public ListingRepository(IDbConnectionFactory connectionFactory) : base(connectionFactory)
     {
     }
 
-    public Task<Guid> CreateAsync(Listing listing, ListingTimelineEvent creationEvent, CancellationToken cancellationToken = default) =>
+    public Task<Guid> CreateAsync(Listing listing, ListingTimelineEvent creationEvent, IReadOnlyList<Notification> volunteerNotifications, CancellationToken cancellationToken = default) =>
         ExecuteInTransactionAsync(async (connection, transaction) =>
         {
             const string insertListingSql = @"
@@ -35,6 +35,15 @@ INSERT INTO ListingTimeline (ListingId, FromStatus, ToStatus, ActorUserId, Note,
 VALUES (@ListingId, @FromStatus, @ToStatus, @ActorUserId, @Note, @PhotoUrl, @CreatedAtUtc);";
 
             await connection.ExecuteAsync(new CommandDefinition(insertTimelineSql, creationEvent, transaction, cancellationToken: cancellationToken));
+
+            const string insertNotificationSql = @"
+INSERT INTO Notifications (UserId, Type, Title, Body, PayloadJson, IsRead, CreatedAtUtc, UpdatedAtUtc)
+OUTPUT INSERTED.Id
+VALUES (@UserId, @Type, @Title, @Body, @PayloadJson, @IsRead, @CreatedAtUtc, @UpdatedAtUtc);";
+            foreach (var notification in volunteerNotifications)
+            {
+                notification.Id = await connection.ExecuteScalarAsync<Guid>(new CommandDefinition(insertNotificationSql, notification, transaction, cancellationToken: cancellationToken));
+            }
 
             return listingId;
         }, cancellationToken);
@@ -117,7 +126,7 @@ WHERE Id = @Id AND IsDeleted = 0;";
     public Task ChangeStatusAsync(Listing listing, ListingTimelineEvent timelineEvent, CancellationToken cancellationToken = default) =>
         ExecuteInTransactionAsync(async (connection, transaction) =>
         {
-            const string updateSql = "UPDATE Listings SET Status = @Status, VolunteerId = @VolunteerId, RecipientId = @RecipientId, UpdatedAtUtc = @UpdatedAtUtc WHERE Id = @Id AND IsDeleted = 0;";
+            const string updateSql = "UPDATE Listings SET Status = @Status, VolunteerId = @VolunteerId, RecipientId = @RecipientId, EstimatedPickupAtUtc = @EstimatedPickupAtUtc, UpdatedAtUtc = @UpdatedAtUtc WHERE Id = @Id AND IsDeleted = 0;";
             const string insertTimelineSql = @"
 INSERT INTO ListingTimeline (ListingId, FromStatus, ToStatus, ActorUserId, Note, PhotoUrl, CreatedAtUtc)
 VALUES (@ListingId, @FromStatus, @ToStatus, @ActorUserId, @Note, @PhotoUrl, @CreatedAtUtc);";
@@ -142,11 +151,11 @@ VALUES (NEWID(), @ListingId, @ImageUrl, @CreatedAtUtc, @UpdatedAtUtc);";
     /// Conditional UPDATE ... WHERE Status = Pending is the actual concurrency guard:
     /// exactly one of two racing claims affects a row, the loser gets rowsAffected == 0.
     /// </summary>
-    public Task<bool> TryClaimAsync(Guid listingId, Guid volunteerId, ListingTimelineEvent claimEvent, CancellationToken cancellationToken = default) =>
+    public Task<bool> TryClaimAsync(Guid listingId, Guid volunteerId, DateTime? estimatedPickupAtUtc, ListingTimelineEvent claimEvent, CancellationToken cancellationToken = default) =>
         ExecuteInTransactionAsync(async (connection, transaction) =>
         {
             const string updateSql = @"
-UPDATE Listings SET Status = @ClaimedStatus, VolunteerId = @VolunteerId, UpdatedAtUtc = @UpdatedAtUtc
+UPDATE Listings SET Status = @ClaimedStatus, VolunteerId = @VolunteerId, EstimatedPickupAtUtc = @EstimatedPickupAtUtc, UpdatedAtUtc = @UpdatedAtUtc
 WHERE Id = @ListingId AND Status = @PendingStatus AND IsDeleted = 0;";
 
             var rowsAffected = await connection.ExecuteAsync(new CommandDefinition(
@@ -155,6 +164,7 @@ WHERE Id = @ListingId AND Status = @PendingStatus AND IsDeleted = 0;";
                 {
                     ListingId = listingId,
                     VolunteerId = volunteerId,
+                    EstimatedPickupAtUtc = estimatedPickupAtUtc,
                     UpdatedAtUtc = claimEvent.CreatedAtUtc,
                     ClaimedStatus = (byte)ListingStatus.Claimed,
                     PendingStatus = (byte)ListingStatus.Pending,
@@ -252,7 +262,7 @@ VALUES (@ListingId, @FromStatus, @ToStatus, @ActorUserId, @Note, @PhotoUrl, @Cre
         await connection.ExecuteAsync(new CommandDefinition(sql, timelineEvent, cancellationToken: cancellationToken));
     }
 
-    public Task ReassignRecipientAsync(Listing listing, ListingTimelineEvent timelineEvent, CancellationToken cancellationToken = default) =>
+    public Task ReassignRecipientAsync(Listing listing, ListingTimelineEvent timelineEvent, Notification? volunteerNotification, CancellationToken cancellationToken = default) =>
         ExecuteInTransactionAsync(async (connection, transaction) =>
         {
             const string updateSql = "UPDATE Listings SET RecipientId = @RecipientId, UpdatedAtUtc = @UpdatedAtUtc WHERE Id = @Id AND IsDeleted = 0;";
@@ -262,6 +272,15 @@ VALUES (@ListingId, @FromStatus, @ToStatus, @ActorUserId, @Note, @PhotoUrl, @Cre
 
             await connection.ExecuteAsync(new CommandDefinition(updateSql, listing, transaction, cancellationToken: cancellationToken));
             await connection.ExecuteAsync(new CommandDefinition(insertTimelineSql, timelineEvent, transaction, cancellationToken: cancellationToken));
+
+            if (volunteerNotification is not null)
+            {
+                const string insertNotificationSql = @"
+INSERT INTO Notifications (UserId, Type, Title, Body, PayloadJson, IsRead, CreatedAtUtc, UpdatedAtUtc)
+OUTPUT INSERTED.Id
+VALUES (@UserId, @Type, @Title, @Body, @PayloadJson, @IsRead, @CreatedAtUtc, @UpdatedAtUtc);";
+                volunteerNotification.Id = await connection.ExecuteScalarAsync<Guid>(new CommandDefinition(insertNotificationSql, volunteerNotification, transaction, cancellationToken: cancellationToken));
+            }
         }, cancellationToken);
 
     public Task ConfirmReceiptAsync(Listing listing, ListingTimelineEvent timelineEvent, VolunteerPoint volunteerPoint, Certificate certificate, IReadOnlyList<Notification> notifications, CancellationToken cancellationToken = default) =>

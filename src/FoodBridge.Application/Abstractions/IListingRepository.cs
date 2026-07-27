@@ -6,11 +6,12 @@ namespace FoodBridge.Application.Abstractions;
 public interface IListingRepository
 {
     /// <summary>
-    /// Inserts the listing and its creation timeline event in one transaction.
-    /// Mutates <paramref name="listing"/>.Id and <paramref name="creationEvent"/>.ListingId
-    /// with the generated id.
+    /// Inserts the listing, its creation timeline event, and one Notifications row per
+    /// entry in <paramref name="volunteerNotifications"/> (the nearby volunteers to alert)
+    /// — all in one transaction. Mutates <paramref name="listing"/>.Id and
+    /// <paramref name="creationEvent"/>.ListingId with the generated id.
     /// </summary>
-    Task<Guid> CreateAsync(Listing listing, ListingTimelineEvent creationEvent, CancellationToken cancellationToken = default);
+    Task<Guid> CreateAsync(Listing listing, ListingTimelineEvent creationEvent, IReadOnlyList<Notification> volunteerNotifications, CancellationToken cancellationToken = default);
 
     Task<Listing?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
 
@@ -31,12 +32,13 @@ public interface IListingRepository
     Task<Guid> AddImageAsync(ListingImage image, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Atomically claims a Pending listing (Status = Pending → Claimed, VolunteerId set)
-    /// and inserts the timeline event, in one conditional UPDATE + INSERT. Returns false
-    /// if the listing was no longer Pending (already claimed, cancelled, etc.) — the
-    /// caller distinguishes 404 (missing) from 409 (conflict) afterward.
+    /// Atomically claims a Pending listing (Status = Pending → Claimed, VolunteerId and
+    /// EstimatedPickupAtUtc set) and inserts the timeline event, in one conditional
+    /// UPDATE + INSERT. Returns false if the listing was no longer Pending (already
+    /// claimed, cancelled, etc.) — the caller distinguishes 404 (missing) from 409
+    /// (conflict) afterward.
     /// </summary>
-    Task<bool> TryClaimAsync(Guid listingId, Guid volunteerId, ListingTimelineEvent claimEvent, CancellationToken cancellationToken = default);
+    Task<bool> TryClaimAsync(Guid listingId, Guid volunteerId, DateTime? estimatedPickupAtUtc, ListingTimelineEvent claimEvent, CancellationToken cancellationToken = default);
 
     Task<(IReadOnlyList<NearbyListing> Items, int TotalCount)> GetNearbyPendingAsync(decimal latitude, decimal longitude, double radiusMeters, DietType? dietType, MealType? mealType, int page, int pageSize, CancellationToken cancellationToken = default);
 
@@ -49,8 +51,15 @@ public interface IListingRepository
     /// <summary>Single-row timeline insert with no other side effects — used by accept, which doesn't change Status.</summary>
     Task AddTimelineEventAsync(ListingTimelineEvent timelineEvent, CancellationToken cancellationToken = default);
 
-    /// <summary>Updates RecipientId (and UpdatedAtUtc) and inserts the timeline event atomically. Used by reject; Status is unchanged.</summary>
-    Task ReassignRecipientAsync(Listing listing, ListingTimelineEvent timelineEvent, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// Updates RecipientId (and UpdatedAtUtc) and inserts the timeline event atomically.
+    /// Used by reject; Status is unchanged. When <paramref name="volunteerNotification"/>
+    /// is non-null (every recipient has now been exhausted), also inserts it in the same
+    /// transaction — the volunteer, not the rejecting recipient, needs to hear about the
+    /// suggested fallback drop-off location, so it travels as a notification rather than
+    /// in this call's own (recipient-facing) response.
+    /// </summary>
+    Task ReassignRecipientAsync(Listing listing, ListingTimelineEvent timelineEvent, Notification? volunteerNotification, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Atomically: Listings status → Confirmed, ListingTimeline insert, VolunteerPoints

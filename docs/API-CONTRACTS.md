@@ -20,6 +20,7 @@ See `docs/ARCHITECTURE.md` § Data dictionary → Enum value tables (Role, Accou
 - [Notifications & real-time (SignalR contract)](#notifications--real-time-signalr-contract) — notifications list/read, tracking, geocode
 - [Certificates, Leaderboard, Reports](#certificates-leaderboard-reports) — certificate list/detail/pdf, leaderboard (+ my-rank), donor/volunteer/recipient reports
 - [Admin](#admin) — dashboard, listings/accounts browse, verify/suspend, disputes (raise/list/resolve), platform report
+- [Drop-off Locations (Admin)](#drop-off-locations-admin) — create, list, activate/deactivate fallback pickup destinations
 
 ## Auth
 All 5 endpoints route under `/api/auth`. None require a role policy; `logout` and `me` require any authenticated JWT (`[Authorize]`).
@@ -240,6 +241,8 @@ Request (saved address instead — same fields otherwise):
 ```
 Success (200): a `ListingResponse` (see `GET /api/listings/{id}` below) with `status: "Pending"`, `pickupAddress`/`latitude`/`longitude` resolved from whichever path was used, empty `images`, and a single `timeline` entry (`fromStatus: null` → `toStatus: "Pending"`).
 
+**Side effect — real-time volunteer alert:** every available (`isAvailable = true`), `Verified`, non-deleted Volunteer within 10km of the listing's pickup point gets a `Notifications` row (`type: "NewListingNearby"`) inserted in the same transaction as the listing, then a best-effort live push over `ReceiveNotification` on `/hubs/notifications` (see [Notifications & real-time](#notifications--real-time-signalr-contract) below) once the write commits. A volunteer with no open connection still sees it via `GET /api/notifications`.
+
 Errors: 400 — validation (bad enum name, non-future deadline before `preparedAtUtc`, out-of-range lat/lng, neither/both of `donorAddressId` vs. the freeform fields provided); 403 — caller isn't a Donor, or `donorAddressId` belongs to a different donor; 404 — `donorAddressId` doesn't exist.
 
 ### GET /api/listings
@@ -271,16 +274,17 @@ Success (200):
     "dietType": "Veg", "mealType": "Dinner", "quantityMeals": 80, "freshnessTag": "JustCooked",
     "preparedAtUtc": "2026-07-23T08:00:00Z", "pickupDeadlineUtc": "2026-07-23T14:00:00Z",
     "pickupAddress": "C.G. Road, Navrangpura", "latitude": 23.0338, "longitude": 72.5623,
-    "status": "Pending", "volunteerId": null, "recipientId": null,
+    "status": "Pending", "volunteerId": null, "recipientId": null, "estimatedPickupAtUtc": null,
     "donorName": "Green Leaf Restaurant", "donorMobile": "9999900001",
     "volunteerName": null, "volunteerMobile": null, "recipientName": null, "recipientMobile": null,
     "createdAtUtc": "...", "updatedAtUtc": "...",
     "images": [ { "id": "...", "imageUrl": "/uploads/....jpg", "createdAtUtc": "..." } ],
-    "timeline": [ { "fromStatus": null, "toStatus": "Pending", "actorUserId": "...", "note": "Listing created.", "photoUrl": null, "createdAtUtc": "..." } ]
+    "timeline": [ { "fromStatus": null, "toStatus": "Pending", "actorUserId": "...", "note": "Listing created.", "photoUrl": null, "createdAtUtc": "..." } ],
+    "suggestedDropOffLocation": null
   }
 }
 ```
-`donorName`/`donorMobile` are always populated; `volunteerName`/`volunteerMobile`/`recipientName`/`recipientMobile` populate once `volunteerId`/`recipientId` are set (`null` until then) — this is every party's way to coordinate the physical handoff (who's picking up, who's delivering to whom), and every caller of this same `ListingResponse` shape (donor/volunteer/recipient endpoints below) is already restricted to a party on that specific listing, so this never leaks contact info to anyone uninvolved. 404 — no such listing. 403 — belongs to a different donor.
+`donorName`/`donorMobile` are always populated; `volunteerName`/`volunteerMobile`/`recipientName`/`recipientMobile` populate once `volunteerId`/`recipientId` are set (`null` until then) — this is every party's way to coordinate the physical handoff (who's picking up, who's delivering to whom), and every caller of this same `ListingResponse` shape (donor/volunteer/recipient endpoints below) is already restricted to a party on that specific listing, so this never leaks contact info to anyone uninvolved. `estimatedPickupAtUtc` is set only if the claiming volunteer gave one (see claim, below); cleared back to `null` on unclaim. `suggestedDropOffLocation` (see [Drop-off Locations](#drop-off-locations-admin)) is only ever non-null in the `confirm-pickup` response itself, when no recipient could be matched — see that endpoint. 404 — no such listing. 403 — belongs to a different donor.
 
 ### PUT /api/listings/{id}
 Updates a listing. Owning donor only, and **only while `Status == Pending`**.
@@ -327,9 +331,9 @@ Success (200) — `PagedResponse<ListingNearbyResponse>`:
 ### POST /api/listings/{id}/claim
 Claims a `Pending` listing (`Pending → Claimed`, sets `VolunteerId` to the caller). Any available volunteer may claim any pending listing — no ownership beyond the role check.
 
-No request body. Success (200): a `ListingResponse` (same shape as the Donor detail endpoint) with `status: "Claimed"`.
+No request body. Optional query parameter `estimatedPickupAtUtc` (UTC ISO-8601, e.g. `?estimatedPickupAtUtc=2026-07-27T18:00:00Z`) lets a volunteer flexibly commit ("I'll take it, but I'm coming in an hour") instead of only being able to claim right before showing up — omit it for an implied immediate pickup, same as before this field existed. Deliberately a query parameter and not a JSON body: `[FromBody]` model binding 415s a request sent with no `Content-Type` header at all, which would have silently broken every existing bodyless caller of this endpoint (found via live testing, not anticipated — see `docs/ARCHITECTURE.md` decisions log). Success (200): a `ListingResponse` (same shape as the Donor detail endpoint) with `status: "Claimed"` and `estimatedPickupAtUtc` echoed back.
 
-**409** — the listing is no longer `Pending` (already claimed by someone else, cancelled, expired, etc.) — `"Listing is no longer available to claim (current status: {status})."`. Verified live: two concurrent claim requests for the same listing resolve to exactly one 200 and one 409, backed by a conditional `UPDATE ... WHERE Status = Pending` rather than the `RowVersion` column. 404 — no such listing.
+**409** — the listing is no longer `Pending` (already claimed by someone else, cancelled, expired, etc.) — `"Listing is no longer available to claim (current status: {status})."`. Verified live: two concurrent claim requests for the same listing resolve to exactly one 200 and one 409, backed by a conditional `UPDATE ... WHERE Status = Pending` rather than the `RowVersion` column. **422** — `estimatedPickupAtUtc` is in the past (`"EstimatedPickupAtUtc must be in the future."`) or later than the listing's own `pickupDeadlineUtc` (`"EstimatedPickupAtUtc cannot be later than the listing's pickup deadline."`). 404 — no such listing. `estimatedPickupAtUtc` is cleared back to `null` on `unclaim`.
 
 ### POST /api/listings/{id}/unclaim
 Voluntarily releases a claim (`Claimed → Pending`), making the listing available for someone else to claim — e.g. the volunteer realizes they can't make it. Assigned volunteer only.
@@ -341,7 +345,7 @@ If a volunteer claims and simply goes silent instead of calling this explicitly,
 ### POST /api/listings/{id}/confirm-pickup
 Confirms pickup (`Claimed → PickedUp`). Assigned volunteer only. `multipart/form-data` with a required `photo` field (JPG/PNG, max 5MB). Auto-matches the nearest available Verified recipient via `RecipientMatcher` if the listing doesn't already have one.
 
-Success (200): same shape as `claim`, with `status: "PickedUp"`, a new timeline entry carrying `photoUrl`, and `recipientId` populated if a match was found (stays `null` if no recipient is currently available — pickup still succeeds).
+Success (200): same shape as `claim`, with `status: "PickedUp"`, a new timeline entry carrying `photoUrl`, and `recipientId` populated if a match was found (stays `null` if no recipient is currently available — pickup still succeeds). **When `recipientId` is still `null`, this response's `suggestedDropOffLocation` is populated with the nearest active [drop-off location](#drop-off-locations-admin)** (or `null` if none are configured) — a place to take the food instead of standing there with nowhere to go.
 
 Errors: 403 — not the assigned volunteer; 422 — `photo` missing/wrong type/too large, or the listing isn't currently `Claimed` (`"Cannot transition listing from '{status}' to 'PickedUp'."`); 400 — no file attached.
 
@@ -370,6 +374,8 @@ Declines the match. Auto-reassigns to the nearest other available Verified recip
 
 No request body. Success (200): a `ListingResponse` with `recipientId` set to the new match, or `null` if none is currently available — check the last `timeline` entry's `note` for which outcome occurred (`"Reassigned to another available recipient."` vs `"No other recipient is currently available."`). Errors: same as `accept`.
 
+**When every recipient is exhausted (`recipientId: null`), the assigned volunteer — not the rejecting recipient calling this endpoint — is pushed a `DropOffLocationSuggested` notification** (live over `/hubs/notifications` if connected, `GET /api/notifications` otherwise) naming the nearest active [drop-off location](#drop-off-locations-admin). It doesn't appear in *this* response, since the volunteer isn't the caller here.
+
 ### POST /api/listings/{id}/confirm-receipt
 Confirms receipt (`Delivered → Confirmed`). Atomically (one transaction): inserts a timeline event, awards the volunteer `quantityMeals × 1` points, issues a donor certificate (`CertificateNumber` format `FB-{yyyyMM}-{seq:D5}`; `PdfUrl` stays null until Phase 8 renders it), and creates one notification each for the donor and the volunteer.
 
@@ -393,7 +399,7 @@ Lists the caller's past confirmed receipts (`Status = Confirmed`, `RecipientId =
 Live delivery is via SignalR (`/hubs/notifications`, `/hubs/tracking`) — full event/method contract in `docs/ARCHITECTURE.md` § Real-time (SignalR) contract, including the `access_token` query-string auth required for the hub connection itself. The endpoints below are the REST fallbacks for clients that aren't (or can't stay) connected.
 
 ### GET /api/notifications
-`[Authorize]`, any role. Lists the caller's own notifications, optionally filtered by read status.
+`[Authorize]`, any role. Lists the caller's own notifications, optionally filtered by read status. Known `type` values: `NewListingNearby` (Volunteer, on listing creation near them), `DonationConfirmed` (Donor, on confirm-receipt), `PointsAwarded` (Volunteer, on confirm-receipt), `DropOffLocationSuggested` (Volunteer, on reject exhausting every recipient).
 
 Query params: `isRead` (optional bool), `page` (default 1), `pageSize` (default 20, max 100).
 
@@ -402,7 +408,7 @@ Success (200) — `PagedResponse<NotificationResponse>`:
 {
   "page": 1, "pageSize": 20, "totalCount": 1, "totalPages": 1,
   "success": true, "message": "Success", "traceId": "...",
-  "data": [ { "id": "...", "type": "DonationConfirmed", "title": "Donation confirmed", "body": "Your donation '...' was received and confirmed. A certificate has been issued.", "payloadJson": null, "isRead": false, "createdAtUtc": "..." } ]
+  "data": [ { "id": "...", "type": "NewListingNearby", "title": "New pickup available near you", "body": "'...' — 80 meals ready for pickup near C.G. Road, Navrangpura.", "payloadJson": null, "isRead": false, "createdAtUtc": "..." } ]
 }
 ```
 
@@ -611,6 +617,32 @@ Success (200):
   "data": { "totalMealsDonated": 67, "totalDeliveries": 3, "totalCertificates": 3, "totalUsers": 10, "mealsDonatedByMonth": [ { "period": "2026-07", "value": 67 } ] }
 }
 ```
+
+## Drop-off Locations (Admin)
+All 4 endpoints route under `/api/dropoff-locations` and require `[Authorize(Policy = "AdminOnly")]`. These are fallback pickup destinations (e.g. partner NGO/shelter collection points) — not browsed by volunteers directly; the nearest active one is automatically resolved and attached to a listing's `suggestedDropOffLocation` when no recipient is available (see `confirm-pickup` and `reject`, above).
+
+### POST /api/dropoff-locations
+Request:
+```json
+{ "name": "Hope NGO Collection Point", "address": "Paldi", "latitude": 23.0089, "longitude": 72.5601, "city": "Ahmedabad" }
+```
+Success (200): the created `DropOffLocationResponse` (`isActive: true`). 400 — validation (`name`/`address` missing/too long, lat/lng out of range).
+
+### GET /api/dropoff-locations
+Query params: `page` (default 1), `pageSize` (default 20, max 100). Success (200) — `PagedResponse<DropOffLocationResponse>`:
+```json
+{
+  "page": 1, "pageSize": 20, "totalCount": 3, "totalPages": 1,
+  "success": true, "message": "Success", "traceId": "...",
+  "data": [ { "id": "...", "name": "Hope NGO Collection Point", "address": "Paldi", "latitude": 23.0089, "longitude": 72.5601, "city": "Ahmedabad", "isActive": true, "createdAtUtc": "..." } ]
+}
+```
+
+### PATCH /api/dropoff-locations/{id}/deactivate
+Excludes the location from future nearest-active lookups without deleting it (it stays visible in `GET` above). No request body. Success (200): the updated `DropOffLocationResponse` (`isActive: false`). 404 — no such location.
+
+### PATCH /api/dropoff-locations/{id}/activate
+Reverses `deactivate`. No request body. Success (200): the updated `DropOffLocationResponse` (`isActive: true`). 404 — no such location.
 
 ## Chart data contract
 Every chart-shaped series in the API (currently: `GET /api/reports/donor|volunteer|recipient`'s `*ByMonth` fields) uses the same `ChartPoint` shape:

@@ -1,5 +1,6 @@
 using FoodBridge.Application.Abstractions;
 using FoodBridge.Application.Common;
+using FoodBridge.Application.DropOffLocations;
 using FoodBridge.Application.Listings.Dtos;
 using FoodBridge.Domain.Entities;
 using FoodBridge.Domain.Enums;
@@ -18,6 +19,7 @@ public sealed class VolunteerListingService : IVolunteerListingService
     private readonly IListingRepository _listingRepository;
     private readonly IUserRepository _userRepository;
     private readonly IRecipientMatcher _recipientMatcher;
+    private readonly IDropOffLocationRepository _dropOffLocationRepository;
     private readonly IFileStorage _fileStorage;
     private readonly ICurrentUser _currentUser;
     private readonly IClock _clock;
@@ -26,6 +28,7 @@ public sealed class VolunteerListingService : IVolunteerListingService
         IListingRepository listingRepository,
         IUserRepository userRepository,
         IRecipientMatcher recipientMatcher,
+        IDropOffLocationRepository dropOffLocationRepository,
         IFileStorage fileStorage,
         ICurrentUser currentUser,
         IClock clock)
@@ -33,6 +36,7 @@ public sealed class VolunteerListingService : IVolunteerListingService
         _listingRepository = listingRepository;
         _userRepository = userRepository;
         _recipientMatcher = recipientMatcher;
+        _dropOffLocationRepository = dropOffLocationRepository;
         _fileStorage = fileStorage;
         _currentUser = currentUser;
         _clock = clock;
@@ -101,21 +105,42 @@ public sealed class VolunteerListingService : IVolunteerListingService
         return Result.Success(new PagedResult<ListingNearbyResponse>(responses, totalCount, normalizedPage, normalizedPageSize));
     }
 
-    public async Task<Result<ListingResponse>> ClaimAsync(Guid listingId, CancellationToken cancellationToken = default)
+    public async Task<Result<ListingResponse>> ClaimAsync(Guid listingId, DateTime? estimatedPickupAtUtc, CancellationToken cancellationToken = default)
     {
         var volunteerId = _currentUser.UserId;
         var now = _clock.UtcNow;
+
+        if (estimatedPickupAtUtc.HasValue)
+        {
+            if (estimatedPickupAtUtc.Value <= now)
+            {
+                return Result.Failure<ListingResponse>("EstimatedPickupAtUtc must be in the future.");
+            }
+
+            var listingToClaim = await _listingRepository.GetByIdAsync(listingId, cancellationToken);
+            if (listingToClaim is null)
+            {
+                throw new NotFoundException("Listing", listingId);
+            }
+
+            if (estimatedPickupAtUtc.Value > listingToClaim.PickupDeadlineUtc)
+            {
+                return Result.Failure<ListingResponse>("EstimatedPickupAtUtc cannot be later than the listing's pickup deadline.");
+            }
+        }
 
         var claimEvent = new ListingTimelineEvent
         {
             FromStatus = ListingStatus.Pending,
             ToStatus = ListingStatus.Claimed,
             ActorUserId = volunteerId,
-            Note = "Claimed by volunteer.",
+            Note = estimatedPickupAtUtc.HasValue
+                ? $"Claimed by volunteer; estimated pickup at {estimatedPickupAtUtc:u}."
+                : "Claimed by volunteer.",
             CreatedAtUtc = now,
         };
 
-        var claimed = await _listingRepository.TryClaimAsync(listingId, volunteerId, claimEvent, cancellationToken);
+        var claimed = await _listingRepository.TryClaimAsync(listingId, volunteerId, estimatedPickupAtUtc, claimEvent, cancellationToken);
         if (!claimed)
         {
             var existing = await _listingRepository.GetByIdAsync(listingId, cancellationToken);
@@ -148,6 +173,7 @@ public sealed class VolunteerListingService : IVolunteerListingService
 
         listing.Status = ListingStatus.Pending;
         listing.VolunteerId = null;
+        listing.EstimatedPickupAtUtc = null;
         listing.UpdatedAtUtc = now;
 
         await _listingRepository.ChangeStatusAsync(listing, timelineEvent, cancellationToken);
@@ -190,7 +216,18 @@ public sealed class VolunteerListingService : IVolunteerListingService
 
         await _listingRepository.ChangeStatusAsync(listing, timelineEvent, cancellationToken);
 
-        return Result.Success(await BuildResponseAsync(listing, cancellationToken), "Pickup confirmed successfully.");
+        var response = await BuildResponseAsync(listing, cancellationToken);
+        if (listing.RecipientId is null)
+        {
+            // The volunteer is the one calling this endpoint, so they learn the fallback
+            // destination synchronously here — no separate notification needed, unlike
+            // RecipientListingService.RejectAsync where a *different* user's action is
+            // what exhausts the recipient search.
+            var nearestDropOff = await _dropOffLocationRepository.GetNearestActiveAsync(listing.Latitude, listing.Longitude, cancellationToken);
+            response = response with { SuggestedDropOffLocation = nearestDropOff?.ToResponse() };
+        }
+
+        return Result.Success(response, "Pickup confirmed successfully.");
     }
 
     public async Task<Result<ListingResponse>> ConfirmDeliveryAsync(Guid listingId, Stream photoContent, string photoExtension, long photoSizeBytes, CancellationToken cancellationToken = default)

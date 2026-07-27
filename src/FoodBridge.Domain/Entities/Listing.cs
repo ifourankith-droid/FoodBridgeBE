@@ -20,6 +20,7 @@ public sealed class Listing
     public ListingStatus Status { get; set; }
     public Guid? VolunteerId { get; set; }
     public Guid? RecipientId { get; set; }
+    public DateTime? EstimatedPickupAtUtc { get; set; }
     public bool IsDeleted { get; set; }
     public DateTime CreatedAtUtc { get; set; }
     public DateTime UpdatedAtUtc { get; set; }

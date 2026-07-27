@@ -19,4 +19,10 @@ public interface IUserRepository
 
     /// <summary>Admin-only write (verify/suspend) — the restriction lives in the calling service, not here.</summary>
     Task UpdateAccountStatusAsync(Guid id, AccountStatus accountStatus, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Ids of available, Verified volunteers within <paramref name="radiusMeters"/> of the
+    /// point — used to target the real-time "new listing nearby" push on listing creation.
+    /// </summary>
+    Task<IReadOnlyList<Guid>> GetNearbyAvailableVolunteerIdsAsync(decimal latitude, decimal longitude, double radiusMeters, CancellationToken cancellationToken = default);
 }

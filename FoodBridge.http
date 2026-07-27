@@ -276,6 +276,11 @@ POST {{baseUrl}}/api/listings/{{listingId}}/claim
 Authorization: Bearer PASTE_VOLUNTEER_JWT_HERE
 
 
+### Claim with a flexible ETA (422 if in the past or after the listing's own pickup deadline)
+POST {{baseUrl}}/api/listings/{{listingId}}/claim?estimatedPickupAtUtc=2026-07-27T18:00:00Z
+Authorization: Bearer PASTE_VOLUNTEER_JWT_HERE
+
+
 ### Release a claim (Claimed -> Pending; assigned volunteer only; 422 once pickup is confirmed)
 POST {{baseUrl}}/api/listings/{{listingId}}/unclaim
 Authorization: Bearer PASTE_VOLUNTEER_JWT_HERE
@@ -463,4 +468,37 @@ Content-Type: application/json
 
 ### Platform-wide report
 GET {{baseUrl}}/api/reports/platform
+Authorization: Bearer PASTE_ADMIN_JWT_HERE
+
+
+### --- Drop-off Locations (Admin) ---
+### Fallback pickup destinations, auto-suggested on a listing when no recipient is
+### available. Not browsed by volunteers directly (see ListingResponse.suggestedDropOffLocation).
+
+### Create a drop-off location
+POST {{baseUrl}}/api/dropoff-locations
+Authorization: Bearer PASTE_ADMIN_JWT_HERE
+Content-Type: application/json
+
+{
+  "name": "Hope NGO Collection Point",
+  "address": "Paldi",
+  "latitude": 23.0089,
+  "longitude": 72.5601,
+  "city": "Ahmedabad"
+}
+
+
+### List drop-off locations
+GET {{baseUrl}}/api/dropoff-locations?page=1&pageSize=20
+Authorization: Bearer PASTE_ADMIN_JWT_HERE
+
+
+### Deactivate a drop-off location
+PATCH {{baseUrl}}/api/dropoff-locations/{{dropOffLocationId}}/deactivate
+Authorization: Bearer PASTE_ADMIN_JWT_HERE
+
+
+### Reactivate a drop-off location
+PATCH {{baseUrl}}/api/dropoff-locations/{{dropOffLocationId}}/activate
 Authorization: Bearer PASTE_ADMIN_JWT_HERE

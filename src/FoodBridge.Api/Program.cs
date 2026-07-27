@@ -15,6 +15,7 @@ using FoodBridge.Application.Certificates;
 using FoodBridge.Application.Common;
 using FoodBridge.Application.Disputes;
 using FoodBridge.Application.DonorAddresses;
+using FoodBridge.Application.DropOffLocations;
 using FoodBridge.Application.Geocoding;
 using FoodBridge.Application.Leaderboard;
 using FoodBridge.Application.Listings;
@@ -183,6 +184,9 @@ try
 
     builder.Services.AddScoped<IDisputeRepository, DisputeRepository>();
     builder.Services.AddScoped<IDisputeService, DisputeService>();
+
+    builder.Services.AddScoped<IDropOffLocationRepository, DropOffLocationRepository>();
+    builder.Services.AddScoped<IDropOffLocationService, DropOffLocationService>();
 
     builder.Services.AddSingleton<IFileStorage>(_ => new LocalFileStorage(uploadsPath, "/uploads"));
 

@@ -1,5 +1,6 @@
 using FoodBridge.Application.Abstractions;
 using FoodBridge.Application.Common;
+using FoodBridge.Application.DropOffLocations;
 using FoodBridge.Application.Listings.Dtos;
 using FoodBridge.Domain.Entities;
 using FoodBridge.Domain.Enums;
@@ -22,6 +23,7 @@ public sealed class RecipientListingService : IRecipientListingService
     private readonly IListingRepository _listingRepository;
     private readonly IUserRepository _userRepository;
     private readonly IRecipientMatcher _recipientMatcher;
+    private readonly IDropOffLocationRepository _dropOffLocationRepository;
     private readonly INotificationDispatcher _notificationDispatcher;
     private readonly ICurrentUser _currentUser;
     private readonly IClock _clock;
@@ -30,6 +32,7 @@ public sealed class RecipientListingService : IRecipientListingService
         IListingRepository listingRepository,
         IUserRepository userRepository,
         IRecipientMatcher recipientMatcher,
+        IDropOffLocationRepository dropOffLocationRepository,
         INotificationDispatcher notificationDispatcher,
         ICurrentUser currentUser,
         IClock clock)
@@ -37,6 +40,7 @@ public sealed class RecipientListingService : IRecipientListingService
         _listingRepository = listingRepository;
         _userRepository = userRepository;
         _recipientMatcher = recipientMatcher;
+        _dropOffLocationRepository = dropOffLocationRepository;
         _notificationDispatcher = notificationDispatcher;
         _currentUser = currentUser;
         _clock = clock;
@@ -93,7 +97,35 @@ public sealed class RecipientListingService : IRecipientListingService
         listing.RecipientId = newRecipientId;
         listing.UpdatedAtUtc = now;
 
-        await _listingRepository.ReassignRecipientAsync(listing, timelineEvent, cancellationToken);
+        // Every recipient is now exhausted — the volunteer (who isn't the caller here, so
+        // can't just read it off this response) needs to be told where to take the food
+        // instead. Resolved before the write so the notification body already has it.
+        Notification? volunteerNotification = null;
+        if (newRecipientId is null)
+        {
+            var nearestDropOff = await _dropOffLocationRepository.GetNearestActiveAsync(listing.Latitude, listing.Longitude, cancellationToken);
+            volunteerNotification = new Notification
+            {
+                UserId = listing.VolunteerId!.Value,
+                Type = "DropOffLocationSuggested",
+                Title = "No recipient available",
+                Body = nearestDropOff is null
+                    ? $"No recipient is currently available for '{listing.Title}', and no fallback drop-off location is configured yet. Please use your judgement."
+                    : $"No recipient is currently available for '{listing.Title}'. Please take it to {nearestDropOff.Name}, {nearestDropOff.Address}.",
+                IsRead = false,
+                CreatedAtUtc = now,
+                UpdatedAtUtc = now,
+            };
+        }
+
+        await _listingRepository.ReassignRecipientAsync(listing, timelineEvent, volunteerNotification, cancellationToken);
+
+        // Best-effort live push, after the atomic write has already committed — same
+        // reasoning as ConfirmReceiptAsync below.
+        if (volunteerNotification is not null)
+        {
+            await _notificationDispatcher.DispatchAsync(volunteerNotification, cancellationToken);
+        }
 
         return Result.Success(await BuildResponseAsync(listing, cancellationToken), "Match rejected; reassigned automatically if another recipient was available.");
     }

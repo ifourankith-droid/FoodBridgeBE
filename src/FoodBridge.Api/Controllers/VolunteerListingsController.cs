@@ -47,15 +47,23 @@ public sealed class VolunteerListingsController : BaseController
 
     /// <summary>
     /// Claims a Pending listing (Pending → Claimed). Any available volunteer may claim;
-    /// under a concurrent race exactly one request succeeds (409 for the loser).
+    /// under a concurrent race exactly one request succeeds (409 for the loser). An
+    /// optional <paramref name="estimatedPickupAtUtc"/> query parameter lets the volunteer
+    /// commit to a delayed pickup instead of an implied immediate one (422 if it's in the
+    /// past or after the listing's own pickup deadline). Deliberately a query parameter,
+    /// not a JSON body — ASP.NET Core's [FromBody] model binding 415s a request with no
+    /// Content-Type header at all, which would have broken the "just POST with nothing"
+    /// call shape this action has always supported; a query parameter has no such
+    /// content-negotiation dependency and stays trivially optional.
     /// </summary>
     [HttpPost("{id:guid}/claim")]
     [ProducesResponseType(typeof(ApiResponse<ListingResponse>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
-    public async Task<ActionResult<ApiResponse<ListingResponse>>> Claim(Guid id, CancellationToken cancellationToken)
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<ApiResponse<ListingResponse>>> Claim(Guid id, [FromQuery] DateTime? estimatedPickupAtUtc, CancellationToken cancellationToken)
     {
-        var result = await _volunteerListingService.ClaimAsync(id, cancellationToken);
+        var result = await _volunteerListingService.ClaimAsync(id, estimatedPickupAtUtc, cancellationToken);
         return HandleResult(result);
     }
 

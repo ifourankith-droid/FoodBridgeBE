@@ -41,6 +41,7 @@ public static class ListingMapper
             listing.Status.ToString(),
             listing.VolunteerId,
             listing.RecipientId,
+            listing.EstimatedPickupAtUtc,
             donor?.Name ?? string.Empty,
             donor?.Mobile ?? string.Empty,
             volunteer?.Name,

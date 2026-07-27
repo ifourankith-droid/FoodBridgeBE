@@ -1,3 +1,5 @@
+using FoodBridge.Application.DropOffLocations.Dtos;
+
 namespace FoodBridge.Application.Listings.Dtos;
 
 public sealed record ListingResponse(
@@ -17,6 +19,7 @@ public sealed record ListingResponse(
     string Status,
     Guid? VolunteerId,
     Guid? RecipientId,
+    DateTime? EstimatedPickupAtUtc,
     string DonorName,
     string DonorMobile,
     string? VolunteerName,
@@ -26,4 +29,5 @@ public sealed record ListingResponse(
     DateTime CreatedAtUtc,
     DateTime UpdatedAtUtc,
     IReadOnlyList<ListingImageResponse> Images,
-    IReadOnlyList<ListingTimelineEntryResponse> Timeline);
+    IReadOnlyList<ListingTimelineEntryResponse> Timeline,
+    DropOffLocationResponse? SuggestedDropOffLocation = null);

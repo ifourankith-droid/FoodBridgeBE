@@ -13,10 +13,14 @@ public sealed class ListingService : IListingService
     private const long MaxImageSizeBytes = 5 * 1024 * 1024;
     private static readonly string[] AllowedImageExtensions = { ".jpg", ".jpeg", ".png" };
 
+    /// <summary>Matches VolunteerListingService's default nearby-search radius, so a volunteer is pushed for exactly the listings they'd otherwise find via GET /api/listings/nearby with no radiusKm override.</summary>
+    private const double NotifyVolunteersRadiusKm = 10;
+
     private readonly IListingRepository _listingRepository;
     private readonly IUserRepository _userRepository;
     private readonly IDonorAddressRepository _donorAddressRepository;
     private readonly IFileStorage _fileStorage;
+    private readonly INotificationDispatcher _notificationDispatcher;
     private readonly ICurrentUser _currentUser;
     private readonly IClock _clock;
 
@@ -25,6 +29,7 @@ public sealed class ListingService : IListingService
         IUserRepository userRepository,
         IDonorAddressRepository donorAddressRepository,
         IFileStorage fileStorage,
+        INotificationDispatcher notificationDispatcher,
         ICurrentUser currentUser,
         IClock clock)
     {
@@ -32,6 +37,7 @@ public sealed class ListingService : IListingService
         _userRepository = userRepository;
         _donorAddressRepository = donorAddressRepository;
         _fileStorage = fileStorage;
+        _notificationDispatcher = notificationDispatcher;
         _currentUser = currentUser;
         _clock = clock;
     }
@@ -97,7 +103,27 @@ public sealed class ListingService : IListingService
             CreatedAtUtc = now,
         };
 
-        await _listingRepository.CreateAsync(listing, creationEvent, cancellationToken);
+        var nearbyVolunteerIds = await _userRepository.GetNearbyAvailableVolunteerIdsAsync(latitude, longitude, NotifyVolunteersRadiusKm * 1000, cancellationToken);
+        var volunteerNotifications = nearbyVolunteerIds.Select(volunteerId => new Notification
+        {
+            UserId = volunteerId,
+            Type = "NewListingNearby",
+            Title = "New pickup available near you",
+            Body = $"'{listing.Title}' — {listing.QuantityMeals} meals ready for pickup near {pickupAddress}.",
+            IsRead = false,
+            CreatedAtUtc = now,
+            UpdatedAtUtc = now,
+        }).ToList();
+
+        await _listingRepository.CreateAsync(listing, creationEvent, volunteerNotifications, cancellationToken);
+
+        // Best-effort live push, after the atomic write has already committed — same
+        // reasoning as RecipientListingService.ConfirmReceiptAsync: a dispatch failure
+        // must never roll back a listing that was already created successfully.
+        foreach (var notification in volunteerNotifications)
+        {
+            await _notificationDispatcher.DispatchAsync(notification, cancellationToken);
+        }
 
         return Result.Success(await listing.ToResponseAsync(Array.Empty<ListingImage>(), new[] { creationEvent }, _userRepository, cancellationToken), "Listing created successfully.");
     }
