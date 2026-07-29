@@ -42,6 +42,31 @@ public interface IListingRepository
 
     Task<(IReadOnlyList<NearbyListing> Items, int TotalCount)> GetNearbyPendingAsync(decimal latitude, decimal longitude, double radiusMeters, DietType? dietType, MealType? mealType, int page, int pageSize, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Donations a recipient could still receive — Pending or Claimed, deadline not passed,
+    /// within <paramref name="radiusMeters"/> — that are either unspoken-for or already
+    /// requested by this same recipient. Ordered by ascending distance.
+    /// </summary>
+    Task<(IReadOnlyList<AvailableNearbyListing> Items, int TotalCount)> GetAvailableNearbyForRecipientAsync(Guid recipientId, decimal latitude, decimal longitude, double radiusMeters, int page, int pageSize, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Conditionally reserves an as-yet-unmatched listing for a recipient and records the
+    /// timeline event, atomically. Status is unchanged — this only pre-sets RecipientId so
+    /// the volunteer's confirm-pickup keeps it instead of running the nearest-available
+    /// matcher. False when another recipient got there first or the listing moved on;
+    /// the caller distinguishes 404 from 409 afterward. When the listing already has a
+    /// volunteer, <paramref name="volunteerNotification"/> tells them where it is now
+    /// headed, inserted in the same transaction so it can't outlive a failed reservation.
+    /// </summary>
+    Task<bool> TryRequestForRecipientAsync(Guid listingId, Guid recipientId, ListingTimelineEvent requestEvent, Notification? volunteerNotification, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Releases a request this recipient made, provided the food hasn't been collected yet.
+    /// False when the listing is no longer theirs to release (reassigned, or already PickedUp
+    /// — past that point the recipient must accept/reject instead).
+    /// </summary>
+    Task<bool> TryWithdrawRecipientRequestAsync(Guid listingId, Guid recipientId, ListingTimelineEvent withdrawEvent, CancellationToken cancellationToken = default);
+
     /// <summary>Listings currently matched to this recipient and awaiting their accept/reject decision (Status = PickedUp).</summary>
     Task<(IReadOnlyList<Listing> Items, int TotalCount)> GetIncomingForRecipientAsync(Guid recipientId, int page, int pageSize, CancellationToken cancellationToken = default);
 

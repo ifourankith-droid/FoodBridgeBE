@@ -228,6 +228,134 @@ OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;";
         return (items, totalCount);
     }
 
+    public async Task<(IReadOnlyList<AvailableNearbyListing> Items, int TotalCount)> GetAvailableNearbyForRecipientAsync(Guid recipientId, decimal latitude, decimal longitude, double radiusMeters, int page, int pageSize, CancellationToken cancellationToken = default)
+    {
+        using var connection = ConnectionFactory.CreateConnection();
+
+        var distanceSql = $"Location.STDistance({GeoHelper.PointFromLatLngFragment})";
+        // Claimed is included, not just Pending: a volunteer already being on the way is
+        // the *most* likely donation to actually arrive, so hiding it would hide the best
+        // rows. Anything already spoken for by another recipient is excluded.
+        var whereSql = $@"
+WHERE Status IN (@PendingStatus, @ClaimedStatus) AND IsDeleted = 0 AND PickupDeadlineUtc > @NowUtc
+    AND (RecipientId IS NULL OR RecipientId = @RecipientId)
+    AND {distanceSql} <= @RadiusMeters";
+
+        var parameters = new
+        {
+            RecipientId = recipientId,
+            Latitude = latitude,
+            Longitude = longitude,
+            RadiusMeters = radiusMeters,
+            PendingStatus = (byte)ListingStatus.Pending,
+            ClaimedStatus = (byte)ListingStatus.Claimed,
+            NowUtc = DateTime.UtcNow,
+            Offset = (page - 1) * pageSize,
+            PageSize = pageSize,
+        };
+
+        var countCommand = new CommandDefinition("SELECT COUNT(*) FROM Listings" + whereSql, parameters, cancellationToken: cancellationToken);
+        var totalCount = await connection.ExecuteScalarAsync<int>(countCommand);
+
+        var itemsSql = $@"
+SELECT Id, Title, FoodType, DietType, MealType, QuantityMeals, FreshnessTag, PickupDeadlineUtc, PickupAddress, Latitude, Longitude, Status,
+       {distanceSql} AS DistanceMeters,
+       CAST(CASE WHEN RecipientId = @RecipientId THEN 1 ELSE 0 END AS bit) AS RequestedByMe
+FROM Listings
+{whereSql}
+ORDER BY DistanceMeters ASC
+OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;";
+
+        var itemsCommand = new CommandDefinition(itemsSql, parameters, cancellationToken: cancellationToken);
+        var items = (await connection.QueryAsync<AvailableNearbyListing>(itemsCommand)).ToList();
+
+        return (items, totalCount);
+    }
+
+    public Task<bool> TryRequestForRecipientAsync(Guid listingId, Guid recipientId, ListingTimelineEvent requestEvent, Notification? volunteerNotification, CancellationToken cancellationToken = default) =>
+        ExecuteInTransactionAsync(async (connection, transaction) =>
+        {
+            // RecipientId IS NULL in the WHERE is what makes two NGOs racing for the same
+            // donation safe — exactly one UPDATE affects a row.
+            const string updateSql = @"
+UPDATE Listings SET RecipientId = @RecipientId, UpdatedAtUtc = @UpdatedAtUtc
+WHERE Id = @ListingId AND IsDeleted = 0 AND RecipientId IS NULL
+    AND Status IN (@PendingStatus, @ClaimedStatus) AND PickupDeadlineUtc > @UpdatedAtUtc;";
+
+            var rowsAffected = await connection.ExecuteAsync(new CommandDefinition(
+                updateSql,
+                new
+                {
+                    ListingId = listingId,
+                    RecipientId = recipientId,
+                    UpdatedAtUtc = requestEvent.CreatedAtUtc,
+                    PendingStatus = (byte)ListingStatus.Pending,
+                    ClaimedStatus = (byte)ListingStatus.Claimed,
+                },
+                transaction,
+                cancellationToken: cancellationToken));
+
+            if (rowsAffected == 0)
+            {
+                return false;
+            }
+
+            requestEvent.ListingId = listingId;
+
+            const string insertTimelineSql = @"
+INSERT INTO ListingTimeline (ListingId, FromStatus, ToStatus, ActorUserId, Note, PhotoUrl, CreatedAtUtc)
+VALUES (@ListingId, @FromStatus, @ToStatus, @ActorUserId, @Note, @PhotoUrl, @CreatedAtUtc);";
+
+            await connection.ExecuteAsync(new CommandDefinition(insertTimelineSql, requestEvent, transaction, cancellationToken: cancellationToken));
+
+            if (volunteerNotification is not null)
+            {
+                const string insertNotificationSql = @"
+INSERT INTO Notifications (UserId, Type, Title, Body, PayloadJson, IsRead, CreatedAtUtc, UpdatedAtUtc)
+OUTPUT INSERTED.Id
+VALUES (@UserId, @Type, @Title, @Body, @PayloadJson, @IsRead, @CreatedAtUtc, @UpdatedAtUtc);";
+                volunteerNotification.Id = await connection.ExecuteScalarAsync<Guid>(new CommandDefinition(insertNotificationSql, volunteerNotification, transaction, cancellationToken: cancellationToken));
+            }
+
+            return true;
+        }, cancellationToken);
+
+    public Task<bool> TryWithdrawRecipientRequestAsync(Guid listingId, Guid recipientId, ListingTimelineEvent withdrawEvent, CancellationToken cancellationToken = default) =>
+        ExecuteInTransactionAsync(async (connection, transaction) =>
+        {
+            const string updateSql = @"
+UPDATE Listings SET RecipientId = NULL, UpdatedAtUtc = @UpdatedAtUtc
+WHERE Id = @ListingId AND IsDeleted = 0 AND RecipientId = @RecipientId
+    AND Status IN (@PendingStatus, @ClaimedStatus);";
+
+            var rowsAffected = await connection.ExecuteAsync(new CommandDefinition(
+                updateSql,
+                new
+                {
+                    ListingId = listingId,
+                    RecipientId = recipientId,
+                    UpdatedAtUtc = withdrawEvent.CreatedAtUtc,
+                    PendingStatus = (byte)ListingStatus.Pending,
+                    ClaimedStatus = (byte)ListingStatus.Claimed,
+                },
+                transaction,
+                cancellationToken: cancellationToken));
+
+            if (rowsAffected == 0)
+            {
+                return false;
+            }
+
+            withdrawEvent.ListingId = listingId;
+
+            const string insertTimelineSql = @"
+INSERT INTO ListingTimeline (ListingId, FromStatus, ToStatus, ActorUserId, Note, PhotoUrl, CreatedAtUtc)
+VALUES (@ListingId, @FromStatus, @ToStatus, @ActorUserId, @Note, @PhotoUrl, @CreatedAtUtc);";
+
+            await connection.ExecuteAsync(new CommandDefinition(insertTimelineSql, withdrawEvent, transaction, cancellationToken: cancellationToken));
+            return true;
+        }, cancellationToken);
+
     public Task<(IReadOnlyList<Listing> Items, int TotalCount)> GetIncomingForRecipientAsync(Guid recipientId, int page, int pageSize, CancellationToken cancellationToken = default) =>
         GetByRecipientAndStatusAsync(recipientId, ListingStatus.PickedUp, page, pageSize, cancellationToken);
 

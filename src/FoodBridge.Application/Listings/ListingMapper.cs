@@ -20,6 +20,22 @@ public static class ListingMapper
         listing.Longitude,
         Math.Round(listing.DistanceMeters / 1000, 2));
 
+    public static ListingAvailableNearbyResponse ToResponse(this AvailableNearbyListing listing) => new(
+        listing.Id,
+        listing.Title,
+        listing.FoodType,
+        listing.DietType?.ToString(),
+        listing.MealType?.ToString(),
+        listing.QuantityMeals,
+        listing.FreshnessTag.ToString(),
+        listing.PickupDeadlineUtc,
+        listing.PickupAddress,
+        listing.Latitude,
+        listing.Longitude,
+        Math.Round(listing.DistanceMeters / 1000, 2),
+        listing.Status.ToString(),
+        listing.RequestedByMe);
+
     /// <summary>
     /// Builds the full detail response, including the donor's and (once assigned) the
     /// matched volunteer's/recipient's name and mobile, so the parties on a listing can

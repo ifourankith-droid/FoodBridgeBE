@@ -314,6 +314,21 @@ Content-Type: image/jpeg
 
 ### --- Listings (Recipient) ---
 
+### Browse uncollected donations near me (Pending + Claimed, nearest first)
+GET {{baseUrl}}/api/listings/available-nearby?latitude=23.0225&longitude=72.5714&radiusKm=10&page=1&pageSize=20
+Authorization: Bearer PASTE_RECIPIENT_JWT_HERE
+
+
+### Request one (reserves it; volunteer's confirm-pickup will route it here)
+POST {{baseUrl}}/api/listings/{{listingId}}/request
+Authorization: Bearer PASTE_RECIPIENT_JWT_HERE
+
+
+### Withdraw that request (only while the food is still uncollected)
+DELETE {{baseUrl}}/api/listings/{{listingId}}/request
+Authorization: Bearer PASTE_RECIPIENT_JWT_HERE
+
+
 ### Incoming matches (awaiting accept/reject)
 GET {{baseUrl}}/api/listings/incoming?page=1&pageSize=20
 Authorization: Bearer PASTE_RECIPIENT_JWT_HERE

@@ -14,6 +14,10 @@ public sealed class RecipientListingService : IRecipientListingService
     /// <summary>Simple, explicit assumption — 1 point per meal delivered — since no point formula is specified.</summary>
     private const int PointsPerMeal = 1;
 
+    /// <summary>Browse radius for the available-nearby feed. Same bounds as the volunteer's.</summary>
+    private const double DefaultRadiusKm = 10;
+    private const double MaxRadiusKm = 50;
+
     /// <summary>
     /// Fixed prefix for reject timeline notes — also used to recognize past rejections
     /// when building the reassignment exclude set. Keep the two in sync.
@@ -44,6 +48,158 @@ public sealed class RecipientListingService : IRecipientListingService
         _notificationDispatcher = notificationDispatcher;
         _currentUser = currentUser;
         _clock = clock;
+    }
+
+    public async Task<Result<PagedResult<ListingAvailableNearbyResponse>>> GetAvailableNearbyAsync(decimal latitude, decimal longitude, double? radiusKm, int page, int pageSize, CancellationToken cancellationToken = default)
+    {
+        if (latitude < -90 || latitude > 90)
+        {
+            return Result.Failure<PagedResult<ListingAvailableNearbyResponse>>("Latitude must be between -90 and 90.");
+        }
+
+        if (longitude < -180 || longitude > 180)
+        {
+            return Result.Failure<PagedResult<ListingAvailableNearbyResponse>>("Longitude must be between -180 and 180.");
+        }
+
+        var effectiveRadiusKm = radiusKm switch
+        {
+            null or <= 0 => DefaultRadiusKm,
+            > MaxRadiusKm => MaxRadiusKm,
+            _ => radiusKm.Value,
+        };
+
+        var (normalizedPage, normalizedPageSize) = PaginationHelper.Normalize(page, pageSize);
+        var (items, totalCount) = await _listingRepository.GetAvailableNearbyForRecipientAsync(
+            _currentUser.UserId, latitude, longitude, effectiveRadiusKm * 1000, normalizedPage, normalizedPageSize, cancellationToken);
+
+        var responses = items.Select(i => i.ToResponse()).ToList();
+        return Result.Success(new PagedResult<ListingAvailableNearbyResponse>(responses, totalCount, normalizedPage, normalizedPageSize));
+    }
+
+    public async Task<Result<ListingResponse>> RequestAsync(Guid listingId, CancellationToken cancellationToken = default)
+    {
+        var listing = await _listingRepository.GetByIdAsync(listingId, cancellationToken);
+        if (listing is null)
+        {
+            throw new NotFoundException("Listing", listingId);
+        }
+
+        // Same bar the automatic matcher applies — an unverified organization can't be
+        // routed a donation, so it mustn't be able to reserve one either.
+        var caller = await _userRepository.GetByIdAsync(_currentUser.UserId, cancellationToken);
+        if (caller is null || caller.AccountStatus != AccountStatus.Verified)
+        {
+            return Result.Failure<ListingResponse>("Your organization must be verified before you can request donations.");
+        }
+
+        if (listing.RecipientId == _currentUser.UserId)
+        {
+            // Idempotent: re-requesting what you already hold is a no-op, not an error.
+            return Result.Success(await BuildResponseAsync(listing, cancellationToken), "Donation already requested.");
+        }
+
+        if (listing.RecipientId is not null)
+        {
+            throw new ConflictException("This donation has already been matched to another organization.");
+        }
+
+        if (listing.Status is not (ListingStatus.Pending or ListingStatus.Claimed))
+        {
+            throw new BusinessRuleException($"Only a donation that hasn't been collected yet can be requested (current status: {listing.Status}).");
+        }
+
+        var now = _clock.UtcNow;
+        if (listing.PickupDeadlineUtc <= now)
+        {
+            throw new BusinessRuleException("This donation's pickup window has already closed.");
+        }
+
+        // Status is deliberately unchanged — requesting reserves the destination, it does
+        // not move the listing through the pickup/delivery state machine.
+        var requestEvent = new ListingTimelineEvent
+        {
+            FromStatus = listing.Status,
+            ToStatus = listing.Status,
+            ActorUserId = _currentUser.UserId,
+            Note = $"Requested by recipient {caller.Name}.",
+            CreatedAtUtc = now,
+        };
+
+        // A volunteer already carrying this listing would otherwise only learn its
+        // destination at pickup time — tell them now so they can plan the drop-off.
+        // Written inside the same transaction as the reservation, so a lost race can't
+        // leave behind a notification for a delivery that isn't happening.
+        var volunteerNotification = listing.VolunteerId is null
+            ? null
+            : new Notification
+            {
+                UserId = listing.VolunteerId.Value,
+                Type = "RecipientRequested",
+                Title = "Drop-off confirmed",
+                Body = $"'{listing.Title}' is going to {caller.Name}. Deliver it there once you've collected it.",
+                IsRead = false,
+                CreatedAtUtc = now,
+                UpdatedAtUtc = now,
+            };
+
+        var reserved = await _listingRepository.TryRequestForRecipientAsync(listingId, _currentUser.UserId, requestEvent, volunteerNotification, cancellationToken);
+        if (!reserved)
+        {
+            throw new ConflictException("This donation is no longer available to request.");
+        }
+
+        listing.RecipientId = _currentUser.UserId;
+        listing.UpdatedAtUtc = now;
+
+        // Best-effort live push, after the atomic write has already committed — same
+        // reasoning as ConfirmReceiptAsync.
+        if (volunteerNotification is not null)
+        {
+            await _notificationDispatcher.DispatchAsync(volunteerNotification, cancellationToken);
+        }
+
+        return Result.Success(await BuildResponseAsync(listing, cancellationToken), "Donation requested successfully.");
+    }
+
+    public async Task<Result<ListingResponse>> WithdrawRequestAsync(Guid listingId, CancellationToken cancellationToken = default)
+    {
+        var listing = await _listingRepository.GetByIdAsync(listingId, cancellationToken);
+        if (listing is null)
+        {
+            throw new NotFoundException("Listing", listingId);
+        }
+
+        if (listing.RecipientId != _currentUser.UserId)
+        {
+            throw new UnauthorizedAccessException("You can only withdraw a request you made.");
+        }
+
+        if (listing.Status is not (ListingStatus.Pending or ListingStatus.Claimed))
+        {
+            throw new BusinessRuleException("The food has already been collected — accept or reject it instead.");
+        }
+
+        var now = _clock.UtcNow;
+        var withdrawEvent = new ListingTimelineEvent
+        {
+            FromStatus = listing.Status,
+            ToStatus = listing.Status,
+            ActorUserId = _currentUser.UserId,
+            Note = "Recipient withdrew their request.",
+            CreatedAtUtc = now,
+        };
+
+        var released = await _listingRepository.TryWithdrawRecipientRequestAsync(listingId, _currentUser.UserId, withdrawEvent, cancellationToken);
+        if (!released)
+        {
+            throw new ConflictException("This request can no longer be withdrawn.");
+        }
+
+        listing.RecipientId = null;
+        listing.UpdatedAtUtc = now;
+
+        return Result.Success(await BuildResponseAsync(listing, cancellationToken), "Request withdrawn successfully.");
     }
 
     public async Task<Result<PagedResult<ListingSummaryResponse>>> GetIncomingAsync(int page, int pageSize, CancellationToken cancellationToken = default)

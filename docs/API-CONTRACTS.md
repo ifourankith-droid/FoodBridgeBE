@@ -16,7 +16,7 @@ See `docs/ARCHITECTURE.md` § Data dictionary → Enum value tables (Role, Accou
 - [Donor Addresses](#donor-addresses) — create, list, detail, update, delete a saved address book
 - [Listings — Donor](#listings--donor) — create, list, detail, update, cancel, image upload
 - [Listings — Volunteer](#listings--volunteer) — nearby, claim, unclaim, confirm-pickup, confirm-delivery
-- [Listings — Recipient](#listings--recipient) — incoming, accept, reject, confirm-receipt, history
+- [Listings — Recipient](#listings--recipient) — available-nearby, request, incoming, accept, reject, confirm-receipt, history
 - [Notifications & real-time (SignalR contract)](#notifications--real-time-signalr-contract) — notifications list/read, tracking, geocode
 - [Certificates, Leaderboard, Reports](#certificates-leaderboard-reports) — certificate list/detail/pdf, leaderboard (+ my-rank), donor/volunteer/recipient reports
 - [Dashboard](#dashboard) — one consolidated per-role dashboard endpoint (Donor/Volunteer/Recipient)
@@ -358,7 +358,40 @@ Success (200): same shape, `status: "Delivered"`, new timeline entry with `photo
 Errors: 403 — not the assigned volunteer; 422 — `"Cannot confirm delivery before a recipient has been matched."` (no `recipientId` yet), `photo` missing/wrong type/too large, or the listing isn't currently `PickedUp`; 400 — no file attached.
 
 ## Listings — Recipient
-All 5 endpoints route under `/api/listings` and require `[Authorize(Policy = "RecipientOnly")]`. `accept`/`reject`/`confirm-receipt` additionally check that the caller is the listing's current `RecipientId` (403 otherwise, enforced in `RecipientListingService`) — once a recipient rejects, they're no longer matched and lose access to that listing.
+All 8 endpoints route under `/api/listings` and require `[Authorize(Policy = "RecipientOnly")]`. `accept`/`reject`/`confirm-receipt`/`request` (DELETE) additionally check that the caller is the listing's current `RecipientId` (403 otherwise, enforced in `RecipientListingService`) — once a recipient rejects, they're no longer matched and lose access to that listing.
+
+**Two ways a recipient gets food.** *Push* (the original): nobody involves the recipient until a volunteer confirms pickup, at which point `RecipientMatcher` assigns the nearest available Verified recipient and it appears in `incoming`. *Pull* (`available-nearby` + `request`): the recipient browses uncollected donations around them and reserves one, which pre-sets `RecipientId` so confirm-pickup keeps it instead of running the matcher (`ConfirmPickupAsync` only matches when `RecipientId is null`). Either way the listing still lands in `incoming` at `PickedUp` for the usual accept/reject decision — requesting reserves the *destination*, it never moves the listing through the state machine.
+
+### GET /api/listings/available-nearby
+Donations the caller could still receive, nearest first: `Status IN (Pending, Claimed)`, `PickupDeadlineUtc > now`, not deleted, and either unmatched or already requested by the caller. `Claimed` is included deliberately — a volunteer already being on the way is the *most* likely donation to arrive.
+
+Query params: `latitude`, `longitude` (required), `radiusKm` (default 10, max 50 — values ≤ 0 fall back to the default), `page` (default 1), `pageSize` (default 20, max 100).
+
+Success (200) — `PagedResponse<ListingAvailableNearbyResponse>`:
+```json
+{
+  "id": "...", "title": "Surplus Wedding Catering", "foodType": "Mixed Veg Meals",
+  "dietType": "Veg", "mealType": "Dinner", "quantityMeals": 50, "freshnessTag": "JustCooked",
+  "pickupDeadlineUtc": "2026-07-28T18:30:00Z", "pickupAddress": "Paldi, Ahmedabad",
+  "latitude": 23.0089, "longitude": 72.5601, "distanceKm": 2.1,
+  "status": "Claimed", "isRequestedByMe": false
+}
+```
+Errors: 422 — `latitude`/`longitude` out of range.
+
+### POST /api/listings/{id}/request
+Reserves an unmatched donation for the caller. No request body.
+
+Requires the caller's `accountStatus` to be `Verified` — the same bar `RecipientMatcher` applies, so an unverified NGO can't reserve what it could never be routed. Concurrency-safe: the reservation is a conditional `UPDATE … WHERE RecipientId IS NULL`, so exactly one of two racing NGOs wins. If the listing already has a volunteer, they get a `RecipientRequested` notification ("Drop-off confirmed") inserted in the same transaction.
+
+Success (200): a `ListingResponse` with `recipientId` set, `status` unchanged. Idempotent — re-requesting a listing you already hold returns 200 with `"Donation already requested."`.
+
+Errors: 404 — no such listing; 409 — `"This donation has already been matched to another organization."` / `"This donation is no longer available to request."` (lost the race); 422 — caller not Verified, `"Only a donation that hasn't been collected yet can be requested (current status: X)."`, or `"This donation's pickup window has already closed."`.
+
+### DELETE /api/listings/{id}/request
+Releases a request the caller made, while the food is still uncollected — without this an accidental request would pin the listing to that NGO permanently, since the matcher only runs when `RecipientId is null`.
+
+Success (200): a `ListingResponse` with `recipientId` cleared. Errors: 404 — no such listing; 403 — not the requesting recipient; 409 — no longer withdrawable; 422 — `"The food has already been collected — accept or reject it instead."` (status is past `Claimed`).
 
 ### GET /api/listings/incoming
 Lists listings currently matched to the caller and awaiting an accept/reject decision (`Status = PickedUp`, `RecipientId = caller`). Query params: `page` (default 1), `pageSize` (default 20, max 100).
