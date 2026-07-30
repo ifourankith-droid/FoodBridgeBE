@@ -1,6 +1,7 @@
 using FoodBridge.Application.Abstractions;
 using FoodBridge.Application.Admin.Dtos;
 using FoodBridge.Application.Common;
+using FoodBridge.Application.Users;
 using FoodBridge.Domain.Entities;
 using FoodBridge.Domain.Enums;
 using FoodBridge.Domain.Exceptions;
@@ -11,12 +12,18 @@ public sealed class AdminService : IAdminService
 {
     private readonly IAdminRepository _adminRepository;
     private readonly IUserRepository _userRepository;
+    private readonly IUserDocumentRepository _userDocumentRepository;
     private readonly ICurrentUser _currentUser;
 
-    public AdminService(IAdminRepository adminRepository, IUserRepository userRepository, ICurrentUser currentUser)
+    public AdminService(
+        IAdminRepository adminRepository,
+        IUserRepository userRepository,
+        IUserDocumentRepository userDocumentRepository,
+        ICurrentUser currentUser)
     {
         _adminRepository = adminRepository;
         _userRepository = userRepository;
+        _userDocumentRepository = userDocumentRepository;
         _currentUser = currentUser;
     }
 
@@ -72,6 +79,22 @@ public sealed class AdminService : IAdminService
 
         var (normalizedPage, normalizedPageSize) = PaginationHelper.Normalize(page, pageSize);
         var (items, totalCount) = await _adminRepository.GetAllUsersAsync(roleFilter, statusFilter, normalizedPage, normalizedPageSize, cancellationToken);
+
+        // One batched lookup for the whole page, only for the rows that actually need documents —
+        // filling this per row would be an N+1 on the queue this page exists to clear.
+        var needsDocuments = items.Where(i => VerificationPolicy.RequiredDocuments(i.Role).Count > 0).Select(i => i.Id).ToList();
+        if (needsDocuments.Count > 0)
+        {
+            var submitted = await _userDocumentRepository.GetTypesForUsersAsync(needsDocuments, cancellationToken);
+            foreach (var item in items)
+            {
+                if (submitted.TryGetValue(item.Id, out var types))
+                {
+                    item.SubmittedDocumentTypes = types;
+                }
+            }
+        }
+
         return Result.Success(new PagedResult<AdminUserSummaryResponse>(items.Select(i => i.ToResponse()).ToList(), totalCount, normalizedPage, normalizedPageSize));
     }
 

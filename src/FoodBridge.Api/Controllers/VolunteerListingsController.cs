@@ -106,8 +106,20 @@ public sealed class VolunteerListingsController : BaseController
     }
 
     /// <summary>
-    /// Confirms delivery (PickedUp → Delivered) with a required photo. Assigned volunteer only.
+    /// Confirms delivery with a required photo. Assigned volunteer only. Ends at
+    /// <c>Confirmed</c> when no recipient was matched (completing the donation), or
+    /// <c>Delivered</c> when one was and still has to confirm receipt.
     /// </summary>
+    /// <remarks>
+    /// Alongside the photo, the volunteer records where the food went: either
+    /// <c>dropOffLocationId</c> for a spot that already exists, or
+    /// <c>latitude</c>/<c>longitude</c>/<c>locationName</c> for one they found in the field, which
+    /// is saved so every volunteer can use it next time. Exactly one form, or 422.
+    /// <para>
+    /// Bound as individual <c>[FromForm]</c> scalars rather than a DTO — see the Phase 13 decision
+    /// log on model-binding complex types alongside <c>IFormFile</c> on these actions.
+    /// </para>
+    /// </remarks>
     [HttpPost("{id:guid}/confirm-delivery")]
     [Consumes("multipart/form-data")]
     [RequestSizeLimit(5 * 1024 * 1024)]
@@ -115,16 +127,26 @@ public sealed class VolunteerListingsController : BaseController
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
-    public async Task<ActionResult<ApiResponse<ListingResponse>>> ConfirmDelivery(Guid id, IFormFile? photo, CancellationToken cancellationToken)
+    public async Task<ActionResult<ApiResponse<ListingResponse>>> ConfirmDelivery(
+        Guid id,
+        IFormFile? photo,
+        [FromForm] Guid? dropOffLocationId,
+        [FromForm] decimal? latitude,
+        [FromForm] decimal? longitude,
+        [FromForm] string? locationName,
+        [FromForm] string? locationAddress,
+        CancellationToken cancellationToken)
     {
         if (photo is null || photo.Length == 0)
         {
             return BadRequest(ApiResponse<ListingResponse>.Fail("A delivery photo is required.", traceId: TraceId));
         }
 
+        var dropOff = new DropOffChoice(dropOffLocationId, latitude, longitude, locationName, locationAddress);
+
         var extension = Path.GetExtension(photo.FileName);
         await using var stream = photo.OpenReadStream();
-        var result = await _volunteerListingService.ConfirmDeliveryAsync(id, stream, extension, photo.Length, cancellationToken);
+        var result = await _volunteerListingService.ConfirmDeliveryAsync(id, stream, extension, photo.Length, dropOff, cancellationToken);
         return HandleResult(result);
     }
 }

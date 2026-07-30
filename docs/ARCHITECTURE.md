@@ -43,9 +43,18 @@ Single source of truth: `FoodBridge.Domain.StateMachines.ListingStateMachine`. A
 ```
 Pending  → Claimed (volunteer claim)     | Cancelled (donor) | Expired (job)
 Claimed  → PickedUp (volunteer + photo)  | Pending (volunteer un-claims — optional)
-PickedUp → Delivered (volunteer + photo)
+PickedUp → Delivered (volunteer + photo, recipient matched)
+         → Confirmed (volunteer + photo, NO recipient matched)  → points + certificate + notifications
 Delivered→ Confirmed (recipient)         → points + certificate + notifications
 ```
+
+`PickedUp` has two legal exits because a donation can complete two ways, decided by whether
+the listing has a `RecipientId` — never by the caller. With a recipient matched, the volunteer
+reports `Delivered` and the recipient confirms receipt. With none (the Recipient role is
+disabled — see the Phase 15 entry below), the food went to a drop-off location and nobody is
+left to confirm, so the volunteer's `confirm-delivery` completes the donation itself. Both
+exits award the same points and issue the same certificate via the same
+`IListingRepository.ConfirmReceiptAsync` transaction.
 
 Recipient-reject (Phase 6) clears `RecipientId`/re-assigns without changing `Status` away from `PickedUp` — it is deliberately *not* modeled as a transition in `ListingStateMachine`, since the status itself doesn't change.
 
@@ -159,16 +168,44 @@ Append-only event log — no `UpdatedAtUtc` (rows are never modified).
 | IsRead | bit | default 0 |
 
 ### DropOffLocations
-Admin-managed fallback pickup destinations. Added in `M202607271000_CreateDropOffLocationsTable`.
+The shared pool of places food can be taken: admin-curated partner sites **plus** recipient hotspots
+volunteers add at confirm-delivery. Added in `M202607271000_CreateDropOffLocationsTable`; widened in
+`M202607301000_AddSourceToDropOffLocations`.
 | Column | Type | Notes |
 |---|---|---|
 | Id | uniqueidentifier PK | |
 | Name | nvarchar(200) | |
-| Address | nvarchar(500) | |
+| Address | nvarchar(500) | falls back to the name for a field-discovered spot with no street address |
 | Latitude / Longitude | decimal(9,6) | |
 | Location | geography | spatial index `SIX_DropOffLocations_Location` |
-| City | nvarchar(100) | nullable |
-| IsActive | bit | default 1; excluded-not-deleted when toggled off |
+| City | nvarchar(100) | nullable; null for volunteer-added spots |
+| IsActive | bit | default 1; excluded-not-deleted when toggled off. Inactive spots never appear in hotspots |
+| Source | tinyint | see enum table. Default 1 (Admin), which correctly backfills every pre-existing row |
+| CreatedByUserId | uniqueidentifier FK → Users | nullable; null for admin-seeded rows predating the column |
+
+### UserDocuments
+Verification evidence, so an admin reviewing an account has more than a name and an OTP-verified
+mobile to judge. Added in `M202607311000_CreateUserDocumentsTable`.
+| Column | Type | Notes |
+|---|---|---|
+| Id | uniqueidentifier PK | |
+| UserId | uniqueidentifier FK → Users | |
+| Type | tinyint | see enum table |
+| FileUrl | nvarchar(500) | served from `/uploads`, like avatars |
+| OriginalFileName | nvarchar(260) | nullable; the uploader's filename, a weak sanity signal for the reviewer |
+| | | **unique** `UX_UserDocuments_UserId_Type` — re-uploading replaces, so there's only ever one current copy per type |
+
+### DropOffDeliveries
+Append-only log, one row per completed drop-off — no `UpdatedAtUtc` (rows are never modified). Drives
+the post-delivery cooldown and hotspot intensity. Added in `M202607301001_CreateDropOffDeliveriesTable`.
+| Column | Type | Notes |
+|---|---|---|
+| Id | uniqueidentifier PK | |
+| DropOffLocationId | uniqueidentifier FK → DropOffLocations | index `IX_DropOffDeliveries_DropOffLocationId_DeliveredAtUtc` (DESC) |
+| VolunteerId | uniqueidentifier FK → Users | |
+| ListingId | uniqueidentifier FK → Listings | **unique** `UX_DropOffDeliveries_ListingId` — a listing is delivered once, so a retry can't double-log |
+| MealsCount | int | copied from the listing so intensity needs no join |
+| DeliveredAtUtc | datetime2 | the cooldown and "last served" both read this |
 
 ### Certificates
 | Column | Type | Notes |
@@ -264,6 +301,18 @@ Insert-only ledger; leaderboard = `SUM(Points) GROUP BY VolunteerId`.
 | 1 | Open |
 | 2 | Resolved |
 
+**DropOffLocations.Source**
+| Value | Name |
+|---|---|
+| 1 | Admin |
+| 2 | Volunteer |
+
+**UserDocuments.Type**
+| Value | Name |
+|---|---|
+| 1 | IdProof |
+| 2 | Selfie |
+
 ### Entity relationship diagram
 
 ```mermaid
@@ -358,7 +407,7 @@ Both hubs require a JWT — the standard `Authorization: Bearer` header for plai
 
 ### `/hubs/notifications` (`NotificationsHub`)
 - On connect, the server adds the connection to a per-user group (`user:{userId}`, derived from the `sub` claim) — no client action needed.
-- **Server → client event**: `ReceiveNotification(NotificationResponse)` — pushed by `SignalRNotificationDispatcher` immediately after a notification is persisted, from three flows: `POST /api/listings` (one `NewListingNearby` push per available Verified Volunteer within 10km of the new listing), `confirm-receipt` (`DonationConfirmed` to the donor, `PointsAwarded` to the volunteer), and `reject` (`DropOffLocationSuggested` to the assigned volunteer, only once every recipient has been exhausted). Best-effort: if the user has no open connection, they only see it via `GET /api/notifications`.
+- **Server → client event**: `ReceiveNotification(NotificationResponse)` — pushed by `SignalRNotificationDispatcher` immediately after a notification is persisted (and always after its transaction commits). Every flow in the Phase 16 table above pushes through here: listing creation, claim, unclaim, confirm-pickup, completion, the recipient request/reject flows, and the expiry background sweep. Best-effort: if the user has no open connection, they only see it via `GET /api/notifications`.
 - No client-invokable methods.
 
 ### `/hubs/tracking` (`TrackingHub`)
@@ -454,6 +503,289 @@ Prompted by a direct question: does the backend already expose what `docs/FoodBr
 - **Admin's dashboard gained two breakdowns (`listingsByStatus`, `accountsByStatus`) instead of a new endpoint** — the 4 stat tiles were already fully served by the existing `GET /api/admin/dashboard`, but its two charts (Listings by Status, Accounts by role-status) needed 6 and 3 separate `admin/listings`/`admin/accounts` calls respectively to render. Two grouped `COUNT(*) ... GROUP BY Status` queries (`AdminRepository.GetListingsByStatusAsync`/`GetAccountsByStatusAsync`) close that gap in the existing response rather than standing up a parallel dashboard endpoint for a role that already had one.
 - **`NearbyListing.ToResponse()` extracted as a reusable `ListingMapper` extension** (previously an inline projection duplicated nowhere — now needed by both `VolunteerListingService.GetNearbyAsync` and the volunteer dashboard's "open listings nearby" widget). `VolunteerListingService.GetNearbyAsync` was refactored to use it too, removing the only other copy of that projection.
 
+### Phase 15 — Recipient role disabled (three-role platform)
+
+The platform now runs on **Donor, Volunteer, Admin**. Recipient is switched off behind
+`Features:RecipientRoleEnabled` (`FeatureSettings`, bound unconditionally in `Program.cs` — unlike
+`OtpSettings`, this must apply in every environment, not just Development). Default `false`.
+
+- **The flag is deliberately not a kill switch on the recipient endpoints.** `RecipientListingsController`,
+  `IRecipientListingService`, `GET /api/dashboard/recipient`, and `GET /api/reports/recipient` all stay
+  live and registered, and existing Recipient accounts keep signing in and using them. What the flag
+  actually changes is narrow: new Recipient registrations are refused, and nothing auto-matches a
+  recipient any more. Verified live both ways — a new `role: "Recipient"` register returns 422, while
+  seeded recipient `9999900006` still logs in and `GET /api/listings/incoming` still returns 200.
+- **Behaviour keys off `Listing.RecipientId`, not off the flag.** This is the decision that keeps both
+  flows correct simultaneously instead of forcing a choice. `VolunteerListingService.ConfirmDeliveryAsync`
+  reads `RecipientId is null` to pick its target status: null → `Confirmed` (completes the donation),
+  set → `Delivered` (legacy, recipient still confirms). So a recipient who proactively reserves a listing
+  via `POST /api/listings/{id}/request` — still permitted — drags that listing through the full legacy
+  accept/reject/confirm-receipt path even with the role disabled, and in-flight listings matched before
+  the switch was thrown finish the way they started. Nothing branches on the flag at delivery time.
+- **The `RecipientId is null` guard in `ConfirmDeliveryAsync` was the actual blocker, not the UI.** It
+  previously threw `BusinessRuleException` ("Cannot confirm delivery before a recipient has been
+  matched"), so simply hiding the role would have dead-ended every listing at `PickedUp`: no volunteer
+  could complete a delivery, and since `Delivered → Confirmed` is the *only* place certificates, volunteer
+  points, and completion notifications are written, donor certificates and the whole leaderboard would
+  have been unreachable. That guard is gone; the null case is now the completing path.
+- **Only `confirm-pickup`'s auto-matching is flag-gated** (`listing.RecipientId is null && _features.RecipientRoleEnabled`).
+  Necessary because the seeded recipients are still `Verified` + `IsAvailable`, so `RecipientMatcher`
+  would happily match them and push new donations back onto the legacy path — defeating the point.
+  A `RecipientId` the listing already has is never touched. `ConfirmPickupAsync` needed no other change:
+  its "no recipient available" branch already suggested the nearest active drop-off location (Phase 13),
+  which is now the normal destination rather than a fallback.
+- **`PickedUp → Confirmed` added to `ListingStateMachine`.** Purely additive — `PickedUp → Delivered` and
+  `Delivered → Confirmed` are untouched, so the legacy path is unaffected. Preferred over letting the
+  volunteer chain two transitions (`PickedUp → Delivered → Confirmed`), which would have written a
+  misleading `Delivered` timeline row for a donation nobody ever received.
+- **The five-part completion payload moved into `ListingCompletion` (Application/Listings).** Two services
+  now complete donations, and duplicating the points formula, certificate shape, and the donor/volunteer
+  notification bodies across both would have meant two places to change one rule — exactly what CLAUDE.md's
+  "single implementations reused everywhere, never duplicated" forbids. `RecipientListingService` was
+  refactored onto it in the same pass (its local `PointsPerMeal` deleted in favour of
+  `ListingCompletion.PointsPerMeal`), so the recipient path is exercising the shared code too, not just
+  the new one. Both services still write through the same `ConfirmReceiptAsync` transaction, and both
+  dispatch notifications best-effort *after* commit — unchanged ordering.
+- **Registration is refused in `AuthService.RegisterAsync`, not in `RegisterRequestValidator`.** The rule
+  belongs with the feature switch that owns it, and it's a `Result.Failure` (422) rather than a field-level
+  400 because the role isn't malformed — it's temporarily unavailable. `RegisterRequestValidator`'s
+  recipient-specific rules are left intact for when the flag flips back.
+- **Existing Recipient rows are left completely alone** — not suspended, not soft-deleted, no migration.
+  Re-enabling the role is one config value, and those accounts come back exactly as they were.
+- Verified end-to-end against the live API, both paths: no-recipient donation → `PickedUp` with
+  `recipientId: null` + a suggested drop-off, then `confirm-delivery` → `Confirmed`, certificate
+  `FB-202607-00005`, 40 points; recipient-requested donation → `recipientName: "Hope NGO"` preserved
+  through pickup, `confirm-delivery` → `Delivered`, `confirm-receipt` → `Confirmed`, certificate
+  `FB-202607-00006`, 25 points. Certificate PDF download still renders (76 KB, `%PDF-1.4`).
+
+### Phase 16 — Notification coverage across the listing lifecycle
+
+Before this pass a donor heard **nothing** between posting a listing and its final confirmation:
+the only notifications were `NewListingNearby` (to volunteers), two volunteer-facing recipient
+events, and the `DonationConfirmed`/`PointsAwarded` pair at completion. A donor had no way to
+learn that a stranger had claimed their food, collected it, released it, or that it had expired.
+
+Full set after this pass — **every type goes to exactly one role**, which the frontend's
+per-type destination registry (`core/models/notification.model.ts`) relies on:
+
+| Type | Trigger | To |
+|---|---|---|
+| `NewListingNearby` | donor posts a listing | every Verified + available Volunteer ≤10km |
+| `ListingClaimed` | volunteer claims | donor |
+| `ListingPickedUp` | volunteer confirms pickup | donor |
+| `ListingUnclaimed` | volunteer releases the claim | donor |
+| `ListingExpired` | expiry sweep | donor |
+| `ClaimExpired` | expiry sweep reverts an abandoned claim | volunteer |
+| `DonationConfirmed` | donation completes | donor |
+| `PointsAwarded` | donation completes | volunteer |
+| `RecipientRequested` | recipient reserves a listing | assigned volunteer |
+| `DropOffLocationSuggested` | reject exhausts every recipient | assigned volunteer |
+
+- **Wording and `Type` strings are centralised in `ListingNotifications`** (Application/Listings),
+  one factory method per event, for the same reason as `ListingCompletion`: those strings are a
+  contract with the frontend's icon/colour/destination registry, so they must not be re-typed
+  inline per call site.
+- **Every notification is persisted in the same transaction as the status change it describes** —
+  `ChangeStatusAsync` gained an optional `IReadOnlyList<Notification>?`, and `TryClaimAsync` an
+  optional `Notification?`, both mirroring the idiom `ReassignRecipientAsync`/`TryRequestForRecipientAsync`
+  already used. So a "your donation was claimed" row can never outlive a claim that rolled back.
+  The existing positional `cancellationToken` call sites all became compile errors, which is
+  precisely why the parameter was inserted before it rather than appended.
+- **`TryClaimAsync` inserts the donor notification only after its conditional UPDATE has won the
+  race.** The losing volunteer in two concurrent claims returns early, so a race never produces a
+  spurious "your food was taken" for a claim that didn't happen.
+- **The expiry sweep notifies inside its own transaction**, via `OUTPUT INSERTED.Id, DELETED.VolunteerId,
+  INSERTED.Title` — `DELETED`, because the revert UPDATE nulls `VolunteerId`, so only the pre-update
+  row still knows whose claim lapsed. `ExpirePastDeadlineListingsAsync` now returns an
+  `ExpirySweepResult` (ids for logging **plus** the persisted notifications) so
+  `ListingExpiryBackgroundService` can push them live after the commit, per-notification try/catch
+  so one dead connection can't stop the rest.
+- **No donor-facing "claim reverted" notification, deliberately.** The sweep reverts
+  `Claimed AND deadline <= now` → Pending, then expires `Pending AND deadline <= now` — so a
+  reverted listing is *always* expired in the same sweep and the donor already gets `ListingExpired`.
+  An "it's open again" message would be immediately contradicted by the expiry notice beside it.
+  Confirmed live: one sweep logged "reverted 1" and "flipped 2 to Expired", producing exactly
+  2× `ListingExpired` (donor) and 1× `ClaimExpired` (volunteer).
+- **No "donor cancelled your pickup" notification — it would be dead code.** Written first, then
+  removed after live testing returned 422 `"Cannot transition listing from 'Claimed' to 'Cancelled'"`:
+  `ListingStateMachine` only permits `Pending → Cancelled`, and a Pending listing never has a
+  `VolunteerId` (both `unclaim` and the sweep's revert null the column), so a cancel can never
+  strand an assigned volunteer. The reasoning is recorded as a comment in `ListingNotifications`
+  so the notification gets added if `Claimed → Cancelled` is ever introduced. See the Roadmap.
+- **`PayloadJson` stays null throughout**, matching every pre-existing notification — the frontend
+  routes to the relevant *page*, not to a specific record, so there is nothing for a payload to carry.
+- Verified live, each type landing for the right user *only*: the `NewListingNearby` radius filter
+  rejects a Mumbai listing (~450km) while accepting one 7km away, and skips a volunteer who has
+  toggled themselves offline (then resumes when they come back online).
+
+### Phase 17 — Recipient hotspots: crowd-sourced drop-off points + delivery cooldown
+
+Turns `DropOffLocations` from a static admin list of partner sites into the shared, growing map of
+where food actually needs to go — and stops two volunteers unknowingly serving the same place minutes
+apart.
+
+- **One pool, not a parallel table.** `DropOffLocations` gained `Source` (Admin/Volunteer) and
+  `CreatedByUserId` (`M202607301000`) rather than a separate `RecipientHotspots` table. A volunteer
+  looking for somewhere to take food wants a single ranked list; two competing sets of suggestions
+  would be worse than none. `Source` keeps a curated partner site distinguishable from a
+  crowd-sourced spot in the UI. Existing rows backfill to `Admin` via the column default, which is
+  correct — every one of them was created through the admin endpoint.
+- **New `DropOffDeliveries` append-only log** (`M202607301001`), one row per completed drop-off
+  (location, volunteer, listing, meals, timestamp). Both the cooldown and hotspot intensity need
+  *history*, not a single "last delivered" column — intensity is a count over all time. Indexed
+  `(DropOffLocationId, DeliveredAtUtc DESC)` to cover both reads, plus a **unique index on
+  `ListingId`**: a listing is delivered exactly once, so a duplicate log row from a retry is
+  impossible at the database level rather than only in code.
+- **The cooldown is global, not per-volunteer** — configured by `DropOff:CooldownHours` (default 5).
+  The point is that the *place* has just been served; a second volunteer arriving 20 minutes later
+  has no way of knowing that on their own, so hiding it only from the volunteer who delivered would
+  fail to prevent the exact duplicate the feature exists for. Verified live: a delivery by volunteer
+  A immediately showed as cooling for volunteer B too.
+- **Cooling spots are returned, flagged — not filtered out.** `GetHotspotsAsync` orders
+  `available-first, then nearest` and reports `cooldownUntilUtc`, so a volunteer sees *why* the
+  closest spot isn't being suggested instead of it silently vanishing from the map. Only the
+  single-suggestion path (`GetNearestAvailableAsync`, used by confirm-pickup and by reject-exhaustion)
+  actually excludes them, via `NOT EXISTS` over the delivery log — it short-circuits on the first
+  match using the index rather than joining and aggregating.
+- **`GetHotspotsAsync` takes the cooldown as a `TimeSpan`, not just a cutoff.** First written with
+  only `cooldownSinceUtc`, which cannot express "available again at 19:00" — the duration isn't
+  recoverable from the cutoff alone without also knowing `now`. Passing `nowUtc` + `cooldown` keeps
+  the arithmetic trivial while the *policy* (how many hours) stays in configuration.
+- **Aggregates come from `OUTER APPLY`, not `GROUP BY` over a join**, so an admin-added spot with
+  zero deliveries still appears — exactly the kind of place a volunteer needs to be told about.
+- **Recording the drop-off is required at confirm-delivery.** Either `dropOffLocationId`, or
+  `latitude`/`longitude`/`locationName` for a spot found in the field — exactly one, or 422. Same
+  rule (and reasoning) as `CreateListingRequest`'s `DonorAddressId` vs the freeform address:
+  silently preferring one over the other would ignore something the caller explicitly sent.
+- **A new location plus its first delivery are written in the same transaction as the status
+  change**, via a `DropOffRecord` parameter on `ChangeStatusAsync`/`ConfirmReceiptAsync`. Bundled
+  into one record rather than two parameters because the pieces are *ordered* — the location must be
+  inserted first so its generated id can populate the log row — and bundling makes that dependency
+  impossible to get wrong at a call site. `ListingRepository.WriteDropOffAsync` implements it once
+  for both completion paths.
+- **The drop-off choice is validated *before* the photo is written to storage.** Otherwise a rejected
+  choice would leave an orphaned file behind for a request that failed anyway. Verified: all five
+  guard cases (nothing supplied, both forms, new spot with no name, unknown id, out-of-range
+  latitude) return 422 with a specific message.
+- **Volunteer-added spots go live immediately**, no moderation queue — the whole point is that the
+  pool grows from real use, and the existing `IsActive` toggle already lets an admin retire a bad
+  one. The admin list badges them ("added by a volunteer") so they're easy to spot. Inactive spots
+  are excluded from hotspots entirely.
+- **Bound as `[FromForm]` scalars on the controller, bundled into `DropOffChoice` at the service
+  boundary.** Not a model-bound DTO: this action is `multipart/form-data`, and per the Phase 13
+  decision log, binding a complex type alongside `IFormFile` has bitten this project before.
+- **`DropOffLocationsController` moved from class-level `AdminOnly` to per-action policies** so
+  `hotspots` can be `VolunteerOnly` while CRUD stays Admin's — the pattern `ReportsController` and
+  `DisputesController` already use. Verified live: volunteer→CRUD 403, admin→hotspots 403,
+  donor→hotspots 403.
+- Verified end-to-end: delivery to an existing spot logged it and put it on cooldown (sinking it
+  below farther-but-available spots); the next confirm-pickup suggestion skipped it for the
+  next-nearest; a brand-new spot named by a volunteer appeared in the shared pool for other
+  volunteers at 1.1km with `source: Volunteer`; and restarting with `DropOff__CooldownHours=0` freed
+  every spot and re-sorted by pure distance, proving the window is genuinely config-driven.
+
+### Phase 18 — Volunteer identity verification (and closing the suspension hole)
+
+Answers "how do we know a new volunteer is real?" — previously, we didn't. `AuthService` assigned
+`AccountStatus.Verified` to everything except Recipients, so once the Recipient role was switched off
+(Phase 15) **no account was ever reviewed**: anyone who could receive an SMS could immediately claim a
+stranger's food and drive away with it. The admin Verifications page already said "Approve or suspend
+volunteers and organizations", so the UI assumed a review that never happened.
+
+- **New `UserDocuments` table** (`M202607311000`) — a government photo ID plus a selfie. The ID alone
+  only proves someone *owns* an ID; the selfie is what lets an admin check it's the person holding it.
+  **Unique index on `(UserId, Type)`**: re-uploading replaces rather than accumulating, so a reviewing
+  admin is never guessing which of five ID photos is current. Enforced in the database, not just by
+  the service's upsert.
+- **`VerificationPolicy` (Application/Users) is the single source of truth** for who needs verifying,
+  with what, what status they start in, and whether they may act. Registration, the volunteer's own
+  screen, the admin queue's `isReadyForReview`, and the claim-time enforcement all read it, so they
+  cannot drift apart — the bug this replaces was exactly that kind of drift.
+- **Volunteers only, deliberately.** A volunteer takes physical custody of a stranger's food and
+  travels with it unsupervised; that's the trust-critical role. Donors stay auto-`Verified` — a fake
+  donor mostly wastes a volunteer's trip, and gating them would block genuine surplus from being
+  posted while it spoils. Verified live that a new Donor registration is still `Verified`.
+- **Enforcement gates *acquiring* work, not *finishing* it.** `claim` and `confirm-pickup` require
+  `Verified`; `confirm-delivery` and `unclaim` deliberately do not. A volunteer suspended while
+  already carrying food must still be able to record where it went — blocking that strands the food
+  with no audit trail — and releasing a claim is the outcome we want, not one to prevent. Verified
+  live: suspended mid-flight, the volunteer was refused a *new* claim (422) yet still drove their
+  current listing to `Confirmed` with points awarded and a complete timeline.
+- **This closes a pre-existing hole, not just a gap in the new feature.** `VolunteerListingService`
+  had *no* `AccountStatus` check of any kind, so admin **Suspend previously did almost nothing to a
+  volunteer** — it only stopped their push notifications (`GetNearbyAvailableVolunteerIdsAsync`
+  filters `Verified`); they could still claim, collect and deliver. The recipient side had always
+  checked this (`RecipientListingService.RequestAsync`); the volunteer side never did.
+- **Pending volunteers can browse but not claim.** They see the dashboard, nearby listings and the
+  hotspot map, and can upload documents — claim returns 422 with the actionable message
+  ("Upload your ID and selfie…"), distinguished from the suspended message ("contact support"),
+  because those need different things from the person reading them. A volunteer who can't see any
+  value while waiting simply never comes back.
+- **`IFileStorage` gained `DeleteAsync`** so a replaced document doesn't leak on disk forever. Called
+  only *after* the row already points at the new file — deleting first would leave the user with
+  nothing if the write then failed. Best-effort and idempotent by contract: failing cleanup must
+  never undo a successful upload. `LocalFileStorage` reduces the stored URL to a bare filename before
+  touching the disk, so a future caller can't turn a path into a traversal.
+- **`AdminUserSummary.SubmittedDocumentTypes` is filled by one batched query per page**
+  (`GetTypesForUsersAsync`), only for rows whose role needs documents — filling it per row would be an
+  N+1 on the very queue this page exists to clear. The response also carries a server-computed
+  `isReadyForReview` so "waiting on me" and "waiting on them" can't be re-derived inconsistently by a
+  client; the admin list sorts actionable rows to the top of Pending.
+- **Documents are self-upload only, read by self-or-admin.** Nobody, admin included, submits evidence
+  on another person's behalf — the whole point is that it came from them. Verified live: a donor got
+  403 both reading and uploading against a volunteer's account.
+- **A selfie may not be a PDF** even though IDs may — accepting one there would defeat the point of
+  comparing a face to the ID. The FE reinforces it by opening the selfie step camera-only.
+- Verified end-to-end against the live API: new volunteer → `Pending`, `required: [IdProof, Selfie]`;
+  nearby browse 200 but claim 422; upload both → `isReadyForReview: true`; admin queue shows
+  `actionable: true` and serves both files (HTTP 200); admin verify → `Verified` → claim 200;
+  re-uploading the ID kept the document count at 2 and the superseded file 404'd.
+
+### Phase 19 — Azure deployment configuration
+
+Full runbook: **`docs/AZURE_DEPLOYMENT.md`**. Summary of what changed and why.
+
+- **Azure SQL connection string added to `appsettings.Production.json`**, using
+  `Authentication="Active Directory Default"` — so it carries **no password** and is safe to commit,
+  unlike the `sa` credentials in `appsettings.Development.json`. The identity comes from
+  `DefaultAzureCredential`: the App Service managed identity in Azure, a developer's Azure CLI / Visual
+  Studio sign-in locally. The value supplied was pasted twice; verified with a real
+  `SqlConnectionStringBuilder` that duplicate keywords parse (last-wins) but stored the de-duplicated form.
+- **No package changes were needed, and that was worth checking rather than assuming.**
+  `Active Directory Default` requires `Microsoft.Data.SqlClient` ≥ 4.0 (5.1.5 here) and `Azure.Identity`
+  (1.10.3, already transitive). Critically, **`FluentMigrator.Runner.SqlServer` 5.2.0 also depends on
+  `Microsoft.Data.SqlClient`** — had it still used `System.Data.SqlClient`, that client rejects
+  `Active Directory Default` outright and migrations would have failed while the app itself worked.
+- **CORS moved to `Cors:AllowedOrigins`.** Previously hardcoded to `http://localhost:4200`, which would
+  block any deployed frontend — flagged in the Roadmap since Phase 10, now closed. The dev fallback also
+  gained `localhost:4201`, the port `npm start` actually uses; the mismatch had been masked by the
+  Angular dev-server proxy making calls same-origin.
+- **Startup now refuses to run outside Development with the checked-in JWT secret.** The Roadmap claimed
+  `Jwt:Secret` was "intentionally absent from `appsettings.Production.json`" — true, but misleading: the
+  *base* `appsettings.json` carries a real secret and base config is always loaded first, so Production
+  silently signed tokens with a value published in the repo. Anyone with the repo could mint an admin
+  token. A startup crash with instructions is strictly better than a quietly forgeable auth scheme.
+- **`Bootstrap:AdminMobile` creates the first Admin account, idempotently.** The seeded users live in a
+  `[Profile("Development")]` migration and `RegisterRequestValidator` forbids self-registering as Admin —
+  so a fresh Azure database had **no admin at all**, meaning nobody could verify a volunteer (Phase 18),
+  resolve a dispute, or manage drop-off points. The platform would have been unusable, not just
+  incomplete. Runs after migrations so `Users` is guaranteed to exist. **Deliberately never promotes an
+  existing account** — silently turning whoever owns a mistyped number into an admin is a
+  privilege-escalation footgun; it logs a warning and leaves them alone. Verified live: creates and signs
+  in as Admin (200 on `/api/admin/dashboard`), no-ops on restart, warns when pointed at an existing Donor.
+- **Live diagnosis of the current Azure state** (run from a dev machine against the real server):
+  `DefaultAzureCredential` acquired a token and the network path and TLS handshake succeeded, but SQL
+  returned `Login failed for user '<token-identified principal>'. The server is not currently configured
+  to accept this token.` (18456/235) — the signature of a logical server with **no Microsoft Entra admin
+  set**. So the remaining work is Azure-side configuration, not code. §2 of the runbook covers it.
+- **Known limitation, now more serious: `LocalFileStorage` writes to `wwwroot/uploads`, which is
+  ephemeral on App Service** — lost on restart, redeploy or scale-out, and not shared between instances.
+  That folder now holds volunteer **ID documents and selfies** (Phase 18) as well as delivery photos and
+  certificates, so on Azure verification evidence should be expected to disappear, leaving admins unable
+  to review and destroying the audit trail behind an already-approved volunteer. `IFileStorage` exists so
+  a `BlobFileStorage` is one new class plus one `Program.cs` line; not built here because it wasn't in
+  scope. Tracked in the Roadmap.
+
 ## Roadmap
 
 Deferred items, each already flagged inline where the tradeoff was made rather than discovered here for the first time:
@@ -461,9 +793,27 @@ Deferred items, each already flagged inline where the tradeoff was made rather t
 - **Self-service mobile-number change.** `PUT /api/users/{id}` explicitly excludes `mobile` — changing it would need a new OTP-reverification flow for the new number (mobile is the OTP-login key), which is a materially larger feature than a profile-field edit. Flagged by the Phase 11 completeness audit; deliberately not built without a decided verification flow.
 - **Self-service account deletion / `IsDeleted` reachability on `Users`.** `IsDeleted` is inserted as `0` and filtered everywhere per CLAUDE.md's soft-delete convention, but no endpoint ever sets it — cancel flips `Status`, suspend flips `AccountStatus`, neither touches `IsDeleted`. Flagged by the Phase 11 audit as a genuinely dead column; not built because the real question (what happens to a user's in-flight listings/claims/matches when they delete their account?) has no specified answer, and inventing one unprompted felt like exactly the kind of consequential, ambiguous business-rule decision this project's working agreement says to surface rather than silently pick.
 - **List sorting options** (e.g. soonest-deadline-first on `nearby`, beyond the fixed default orders every list endpoint currently returns). Flagged by the Phase 11 audit as a real but low-severity gap — nice-to-have polish, not a correctness or safety issue, so left for a future pass.
+- **Donor cancellation of an already-claimed listing.** `ListingStateMachine` only allows
+  `Pending → Cancelled`, so once a volunteer claims a listing the donor has no way to withdraw it —
+  they can only wait for the pickup deadline to pass and let the sweep expire it. Surfaced by the
+  Phase 16 notification work (a "donor cancelled your pickup" notification turned out to be
+  unreachable). Not built because adding `Claimed → Cancelled` changes the state machine CLAUDE.md
+  pins as fixed, and it needs a product answer first: does a volunteer already en route get
+  penalised, notified only, or is cancellation refused past pickup? If it is added, pair it with
+  the volunteer notification described in `ListingNotifications`.
 - **Explicit "un-suspend" action.** `AdminService.VerifyAccountAsync` doubles as the only way to reverse a suspension today (any status → Verified, unconditionally). A dedicated `reinstate` endpoint with its own audit trail would be clearer if disputes/suspensions become frequent.
 - **`ITrackingStore`/`ITokenDenylist` are in-memory, single-instance only.** Both are `ConcurrentDictionary`-backed by design (ephemeral, high-frequency, not worth a DB write) but that means a multi-instance/load-balanced deployment would lose live tracking state and token revocations on failover. A Redis-backed implementation behind the same interfaces would be a drop-in swap.
 - **`IGeocodingProvider`/`MockGeocodingProvider` is a hardcoded Ahmedabad locality table**, not a real geocoding API. Swapping in Google Maps/Mapbox behind the existing interface needs zero consumer changes.
 - **Certificate numbering's `SELECT COUNT(*)`-based per-month sequence has a known, accepted race** under truly concurrent `confirm-receipt` calls in the same month/millisecond. A row-locked counter table or a per-month-resetting mechanism would close it if donation volume grows past "rare, human-paced" events.
-- **CORS is hardcoded to `http://localhost:4200`** (`Program.cs`'s `AllowAngularDev` policy) for the Angular dev server — a real deployment needs this promoted to configuration (`appsettings.Production.json`'s allowed origins) rather than a literal string.
-- **`Jwt:Secret` and `ConnectionStrings:Default` are intentionally absent from `appsettings.Production.json`** — a real deployment must supply them via environment variables (`Jwt__Secret`, `ConnectionStrings__Default`) or a secrets manager; the base `appsettings.json`'s checked-in values are for local dev only and must never reach a real environment unoverridden.
+- **Blob-backed `IFileStorage` for Azure.** `LocalFileStorage` writes to the App Service's ephemeral
+  filesystem, so uploaded **volunteer ID documents and selfies**, delivery photos, listing images and
+  certificate PDFs do not survive a restart, redeploy or scale-out, and aren't shared across instances.
+  This is the most consequential open item on the list — losing verification evidence breaks both the
+  admin review queue and the audit trail behind approved volunteers. A `BlobFileStorage` is a drop-in
+  (one class + one `Program.cs` registration); see `docs/AZURE_DEPLOYMENT.md` §5.
+- ~~CORS is hardcoded to `http://localhost:4200`~~ — **closed in Phase 19**, now `Cors:AllowedOrigins`.
+- ~~`Jwt:Secret`/`ConnectionStrings:Default` absent from `appsettings.Production.json`~~ — **superseded in
+  Phase 19.** The connection string is now present (password-less Entra auth, safe to commit), and the
+  JWT secret must be supplied via `Jwt__Secret` or the app refuses to start outside Development — the
+  previous wording was misleading, since Production silently inherited the committed dev secret from the
+  base `appsettings.json`.

@@ -1,6 +1,7 @@
 using FoodBridge.Application.Abstractions;
 using FoodBridge.Application.Auth.Dtos;
 using FoodBridge.Application.Common;
+using FoodBridge.Application.Users;
 using FoodBridge.Domain.Entities;
 using FoodBridge.Domain.Enums;
 using FoodBridge.Domain.Exceptions;
@@ -23,6 +24,7 @@ public sealed class AuthService : IAuthService
     private readonly ITokenDenylist _tokenDenylist;
     private readonly IClock _clock;
     private readonly OtpSettings _otpSettings;
+    private readonly FeatureSettings _features;
 
     public AuthService(
         IUserRepository userRepository,
@@ -32,7 +34,8 @@ public sealed class AuthService : IAuthService
         IPasswordlessSessionService passwordlessSessionService,
         ITokenDenylist tokenDenylist,
         IClock clock,
-        IOptions<OtpSettings> otpSettings)
+        IOptions<OtpSettings> otpSettings,
+        IOptions<FeatureSettings> features)
     {
         _userRepository = userRepository;
         _otpCodeRepository = otpCodeRepository;
@@ -42,6 +45,7 @@ public sealed class AuthService : IAuthService
         _tokenDenylist = tokenDenylist;
         _clock = clock;
         _otpSettings = otpSettings.Value;
+        _features = features.Value;
     }
 
     public async Task<Result> SendOtpAsync(SendOtpRequest request, CancellationToken cancellationToken = default)
@@ -120,7 +124,19 @@ public sealed class AuthService : IAuthService
         }
 
         var role = Enum.Parse<UserRole>(request.Role, ignoreCase: true);
-        var accountStatus = role == UserRole.Recipient ? AccountStatus.Pending : AccountStatus.Verified;
+
+        // Recipient is currently not part of the product (Donor/Volunteer/Admin only).
+        // Refused here rather than in the validator so the rule sits with the feature
+        // switch that owns it; accounts registered while it was enabled keep working.
+        if (role == UserRole.Recipient && !_features.RecipientRoleEnabled)
+        {
+            return Result.Failure<AuthResponse>("Recipient registration is currently unavailable. Please register as a Donor or a Volunteer.");
+        }
+
+        // Volunteers (and Recipients) start Pending and need an admin to review their uploaded ID —
+        // a volunteer takes physical custody of a stranger's food, so a working mobile number is not
+        // sufficient evidence on its own. Donors stay auto-Verified. See VerificationPolicy.
+        var accountStatus = VerificationPolicy.InitialAccountStatus(role);
         var now = _clock.UtcNow;
 
         var user = new User

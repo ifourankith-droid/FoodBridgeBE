@@ -1,5 +1,7 @@
+using System.Data;
 using Dapper;
 using FoodBridge.Application.Abstractions;
+using FoodBridge.Application.Listings;
 using FoodBridge.Domain.Entities;
 using FoodBridge.Domain.Enums;
 using FoodBridge.Infrastructure.Common;
@@ -123,7 +125,7 @@ WHERE Id = @Id AND IsDeleted = 0;";
     /// values when unchanged by the caller) and inserts the timeline event atomically.
     /// Used by cancel, confirm-pickup (also assigns RecipientId), and confirm-delivery.
     /// </summary>
-    public Task ChangeStatusAsync(Listing listing, ListingTimelineEvent timelineEvent, CancellationToken cancellationToken = default) =>
+    public Task ChangeStatusAsync(Listing listing, ListingTimelineEvent timelineEvent, IReadOnlyList<Notification>? notifications = null, DropOffRecord? dropOff = null, CancellationToken cancellationToken = default) =>
         ExecuteInTransactionAsync(async (connection, transaction) =>
         {
             const string updateSql = "UPDATE Listings SET Status = @Status, VolunteerId = @VolunteerId, RecipientId = @RecipientId, EstimatedPickupAtUtc = @EstimatedPickupAtUtc, UpdatedAtUtc = @UpdatedAtUtc WHERE Id = @Id AND IsDeleted = 0;";
@@ -133,7 +135,61 @@ VALUES (@ListingId, @FromStatus, @ToStatus, @ActorUserId, @Note, @PhotoUrl, @Cre
 
             await connection.ExecuteAsync(new CommandDefinition(updateSql, listing, transaction, cancellationToken: cancellationToken));
             await connection.ExecuteAsync(new CommandDefinition(insertTimelineSql, timelineEvent, transaction, cancellationToken: cancellationToken));
+
+            // Notifications ride the same transaction as the status change they describe, so
+            // a "your donation was claimed" row can never outlive a claim that rolled back.
+            if (notifications is { Count: > 0 })
+            {
+                const string insertNotificationSql = @"
+INSERT INTO Notifications (UserId, Type, Title, Body, PayloadJson, IsRead, CreatedAtUtc, UpdatedAtUtc)
+OUTPUT INSERTED.Id
+VALUES (@UserId, @Type, @Title, @Body, @PayloadJson, @IsRead, @CreatedAtUtc, @UpdatedAtUtc);";
+
+                foreach (var notification in notifications)
+                {
+                    notification.Id = await connection.ExecuteScalarAsync<Guid>(new CommandDefinition(insertNotificationSql, notification, transaction, cancellationToken: cancellationToken));
+                }
+            }
+
+            await WriteDropOffAsync(connection, transaction, dropOff, cancellationToken);
         }, cancellationToken);
+
+    /// <summary>
+    /// Persists the drop-off location + delivery-log row for a delivery, inside the caller's
+    /// transaction. Shared by both completion paths (<see cref="ChangeStatusAsync"/>'s legacy
+    /// Delivered and <see cref="ConfirmReceiptAsync"/>'s straight-to-Confirmed) so the ordering
+    /// dependency — create the new location, then point the log row at its generated id — is
+    /// implemented once.
+    /// </summary>
+    private static async Task WriteDropOffAsync(IDbConnection connection, IDbTransaction transaction, DropOffRecord? dropOff, CancellationToken cancellationToken)
+    {
+        if (dropOff is null)
+        {
+            return;
+        }
+
+        if (dropOff.NewLocation is not null)
+        {
+            dropOff.NewLocation.Id = await connection.ExecuteScalarAsync<Guid>(new CommandDefinition(
+                DropOffLocationRepository.InsertSql,
+                dropOff.NewLocation,
+                transaction,
+                cancellationToken: cancellationToken));
+
+            dropOff.Delivery.DropOffLocationId = dropOff.NewLocation.Id;
+        }
+
+        const string insertDeliverySql = @"
+INSERT INTO DropOffDeliveries (DropOffLocationId, VolunteerId, ListingId, MealsCount, DeliveredAtUtc, CreatedAtUtc)
+OUTPUT INSERTED.Id
+VALUES (@DropOffLocationId, @VolunteerId, @ListingId, @MealsCount, @DeliveredAtUtc, @CreatedAtUtc);";
+
+        dropOff.Delivery.Id = await connection.ExecuteScalarAsync<Guid>(new CommandDefinition(
+            insertDeliverySql,
+            dropOff.Delivery,
+            transaction,
+            cancellationToken: cancellationToken));
+    }
 
     public async Task<Guid> AddImageAsync(ListingImage image, CancellationToken cancellationToken = default)
     {
@@ -151,7 +207,7 @@ VALUES (NEWID(), @ListingId, @ImageUrl, @CreatedAtUtc, @UpdatedAtUtc);";
     /// Conditional UPDATE ... WHERE Status = Pending is the actual concurrency guard:
     /// exactly one of two racing claims affects a row, the loser gets rowsAffected == 0.
     /// </summary>
-    public Task<bool> TryClaimAsync(Guid listingId, Guid volunteerId, DateTime? estimatedPickupAtUtc, ListingTimelineEvent claimEvent, CancellationToken cancellationToken = default) =>
+    public Task<bool> TryClaimAsync(Guid listingId, Guid volunteerId, DateTime? estimatedPickupAtUtc, ListingTimelineEvent claimEvent, Notification? donorNotification = null, CancellationToken cancellationToken = default) =>
         ExecuteInTransactionAsync(async (connection, transaction) =>
         {
             const string updateSql = @"
@@ -184,6 +240,19 @@ INSERT INTO ListingTimeline (ListingId, FromStatus, ToStatus, ActorUserId, Note,
 VALUES (@ListingId, @FromStatus, @ToStatus, @ActorUserId, @Note, @PhotoUrl, @CreatedAtUtc);";
 
             await connection.ExecuteAsync(new CommandDefinition(insertTimelineSql, claimEvent, transaction, cancellationToken: cancellationToken));
+
+            // Only inserted once the conditional UPDATE actually won the race — the loser
+            // returns above, so a losing claim never tells the donor their food was taken.
+            if (donorNotification is not null)
+            {
+                const string insertNotificationSql = @"
+INSERT INTO Notifications (UserId, Type, Title, Body, PayloadJson, IsRead, CreatedAtUtc, UpdatedAtUtc)
+OUTPUT INSERTED.Id
+VALUES (@UserId, @Type, @Title, @Body, @PayloadJson, @IsRead, @CreatedAtUtc, @UpdatedAtUtc);";
+
+                donorNotification.Id = await connection.ExecuteScalarAsync<Guid>(new CommandDefinition(insertNotificationSql, donorNotification, transaction, cancellationToken: cancellationToken));
+            }
+
             return true;
         }, cancellationToken);
 
@@ -411,7 +480,7 @@ VALUES (@UserId, @Type, @Title, @Body, @PayloadJson, @IsRead, @CreatedAtUtc, @Up
             }
         }, cancellationToken);
 
-    public Task ConfirmReceiptAsync(Listing listing, ListingTimelineEvent timelineEvent, VolunteerPoint volunteerPoint, Certificate certificate, IReadOnlyList<Notification> notifications, CancellationToken cancellationToken = default) =>
+    public Task ConfirmReceiptAsync(Listing listing, ListingTimelineEvent timelineEvent, VolunteerPoint volunteerPoint, Certificate certificate, IReadOnlyList<Notification> notifications, DropOffRecord? dropOff = null, CancellationToken cancellationToken = default) =>
         ExecuteInTransactionAsync(async (connection, transaction) =>
         {
             const string updateListingSql = "UPDATE Listings SET Status = @Status, UpdatedAtUtc = @UpdatedAtUtc WHERE Id = @Id AND IsDeleted = 0;";
@@ -451,36 +520,43 @@ VALUES (@UserId, @Type, @Title, @Body, @PayloadJson, @IsRead, @CreatedAtUtc, @Up
             {
                 notification.Id = await connection.ExecuteScalarAsync<Guid>(new CommandDefinition(insertNotificationSql, notification, transaction, cancellationToken: cancellationToken));
             }
+
+            await WriteDropOffAsync(connection, transaction, dropOff, cancellationToken);
         }, cancellationToken);
 
-    public Task<(IReadOnlyList<Guid> ExpiredIds, IReadOnlyList<Guid> RevertedToPendingIds)> ExpirePastDeadlineListingsAsync(DateTime nowUtc, CancellationToken cancellationToken = default) =>
+    public Task<ExpirySweepResult> ExpirePastDeadlineListingsAsync(DateTime nowUtc, CancellationToken cancellationToken = default) =>
         ExecuteInTransactionAsync(async (connection, transaction) =>
         {
+            var notifications = new List<Notification>();
+
             // Step 1: a volunteer who claimed and never showed up must not leave perishable
             // food stuck forever — revert Claimed-past-deadline listings back to Pending.
             // Reuses the state machine's existing Claimed→Pending transition (see
             // ListingStateMachine); does not invent a new one.
+            //
+            // OUTPUT DELETED.VolunteerId, not INSERTED: the UPDATE nulls the column, so only
+            // the pre-update row still knows whose claim just lapsed.
             const string revertSql = @"
 UPDATE Listings
 SET Status = @PendingStatus, VolunteerId = NULL, UpdatedAtUtc = @NowUtc
-OUTPUT INSERTED.Id
+OUTPUT INSERTED.Id, DELETED.VolunteerId, INSERTED.Title
 WHERE Status = @ClaimedStatus AND PickupDeadlineUtc <= @NowUtc AND IsDeleted = 0;";
 
-            var revertedIds = (await connection.QueryAsync<Guid>(new CommandDefinition(
+            var reverted = (await connection.QueryAsync<SweepRow>(new CommandDefinition(
                 revertSql,
                 new { PendingStatus = (byte)ListingStatus.Pending, ClaimedStatus = (byte)ListingStatus.Claimed, NowUtc = nowUtc },
                 transaction,
                 cancellationToken: cancellationToken))).ToList();
 
-            if (revertedIds.Count > 0)
+            if (reverted.Count > 0)
             {
                 const string insertRevertTimelineSql = @"
 INSERT INTO ListingTimeline (ListingId, FromStatus, ToStatus, ActorUserId, Note, PhotoUrl, CreatedAtUtc)
 VALUES (@ListingId, @FromStatus, @ToStatus, NULL, @Note, NULL, @CreatedAtUtc);";
 
-                var revertRows = revertedIds.Select(id => new
+                var revertRows = reverted.Select(row => new
                 {
-                    ListingId = id,
+                    ListingId = row.Id,
                     FromStatus = (byte)ListingStatus.Claimed,
                     ToStatus = (byte)ListingStatus.Pending,
                     Note = "Volunteer did not act before the pickup deadline — automatically returned to Pending.",
@@ -488,6 +564,13 @@ VALUES (@ListingId, @FromStatus, @ToStatus, NULL, @Note, NULL, @CreatedAtUtc);";
                 });
 
                 await connection.ExecuteAsync(new CommandDefinition(insertRevertTimelineSql, revertRows, transaction, cancellationToken: cancellationToken));
+
+                // The volunteer whose claim just lapsed. Wording comes from the shared
+                // Application-layer factory rather than being written inline here, the same
+                // way the timeline Notes above are owned by this sweep.
+                notifications.AddRange(reverted
+                    .Where(row => row.VolunteerId.HasValue)
+                    .Select(row => ListingNotifications.ClaimExpired(row.VolunteerId!.Value, row.Title, nowUtc)));
             }
 
             // Step 2: expire every Pending listing whose deadline has passed — including
@@ -496,24 +579,24 @@ VALUES (@ListingId, @FromStatus, @ToStatus, NULL, @Note, NULL, @CreatedAtUtc);";
             const string expireSql = @"
 UPDATE Listings
 SET Status = @ExpiredStatus, UpdatedAtUtc = @NowUtc
-OUTPUT INSERTED.Id
+OUTPUT INSERTED.Id, INSERTED.DonorId, INSERTED.Title
 WHERE Status = @PendingStatus AND PickupDeadlineUtc <= @NowUtc AND IsDeleted = 0;";
 
-            var expiredIds = (await connection.QueryAsync<Guid>(new CommandDefinition(
+            var expired = (await connection.QueryAsync<SweepRow>(new CommandDefinition(
                 expireSql,
                 new { ExpiredStatus = (byte)ListingStatus.Expired, PendingStatus = (byte)ListingStatus.Pending, NowUtc = nowUtc },
                 transaction,
                 cancellationToken: cancellationToken))).ToList();
 
-            if (expiredIds.Count > 0)
+            if (expired.Count > 0)
             {
                 const string insertExpireTimelineSql = @"
 INSERT INTO ListingTimeline (ListingId, FromStatus, ToStatus, ActorUserId, Note, PhotoUrl, CreatedAtUtc)
 VALUES (@ListingId, @FromStatus, @ToStatus, NULL, @Note, NULL, @CreatedAtUtc);";
 
-                var expireRows = expiredIds.Select(id => new
+                var expireRows = expired.Select(row => new
                 {
-                    ListingId = id,
+                    ListingId = row.Id,
                     FromStatus = (byte)ListingStatus.Pending,
                     ToStatus = (byte)ListingStatus.Expired,
                     Note = "Listing expired automatically (pickup deadline passed).",
@@ -521,8 +604,40 @@ VALUES (@ListingId, @FromStatus, @ToStatus, NULL, @Note, NULL, @CreatedAtUtc);";
                 });
 
                 await connection.ExecuteAsync(new CommandDefinition(insertExpireTimelineSql, expireRows, transaction, cancellationToken: cancellationToken));
+
+                notifications.AddRange(expired
+                    .Where(row => row.DonorId.HasValue)
+                    .Select(row => ListingNotifications.Expired(row.DonorId!.Value, row.Title, nowUtc)));
             }
 
-            return ((IReadOnlyList<Guid>)expiredIds, (IReadOnlyList<Guid>)revertedIds);
+            // Persisted in the same transaction as the status changes they describe, so the
+            // sweep is genuinely all-or-nothing: nobody is ever told their listing expired
+            // by a transaction that then rolled back.
+            if (notifications.Count > 0)
+            {
+                const string insertNotificationSql = @"
+INSERT INTO Notifications (UserId, Type, Title, Body, PayloadJson, IsRead, CreatedAtUtc, UpdatedAtUtc)
+OUTPUT INSERTED.Id
+VALUES (@UserId, @Type, @Title, @Body, @PayloadJson, @IsRead, @CreatedAtUtc, @UpdatedAtUtc);";
+
+                foreach (var notification in notifications)
+                {
+                    notification.Id = await connection.ExecuteScalarAsync<Guid>(new CommandDefinition(insertNotificationSql, notification, transaction, cancellationToken: cancellationToken));
+                }
+            }
+
+            return new ExpirySweepResult(
+                expired.Select(row => row.Id).ToList(),
+                reverted.Select(row => row.Id).ToList(),
+                notifications);
         }, cancellationToken);
+
+    /// <summary>Projection of the sweep's OUTPUT clauses — just enough to log and notify.</summary>
+    private sealed class SweepRow
+    {
+        public Guid Id { get; init; }
+        public Guid? DonorId { get; init; }
+        public Guid? VolunteerId { get; init; }
+        public string Title { get; init; } = string.Empty;
+    }
 }

@@ -223,7 +223,10 @@ public sealed class ListingService : IListingService
         listing.Status = ListingStatus.Cancelled;
         listing.UpdatedAtUtc = now;
 
-        await _listingRepository.ChangeStatusAsync(listing, timelineEvent, cancellationToken);
+        // No notification: the state machine only allows Pending → Cancelled, and a Pending
+        // listing has no assigned volunteer, so there is nobody to tell. See the note in
+        // ListingNotifications.
+        await _listingRepository.ChangeStatusAsync(listing, timelineEvent, cancellationToken: cancellationToken);
 
         var images = await _listingRepository.GetImagesAsync(listingId, cancellationToken);
         var timeline = await _listingRepository.GetTimelineAsync(listingId, cancellationToken);

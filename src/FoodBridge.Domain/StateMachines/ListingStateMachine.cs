@@ -7,6 +7,13 @@ namespace FoodBridge.Domain.StateMachines;
 /// Single source of truth for valid Listing status transitions. Recipient-reject
 /// (which clears the assignment without changing status) is handled separately
 /// in the Recipient module, not as a transition here.
+/// <para>
+/// PickedUp has two legal exits because a donation can be completed two ways:
+/// via Delivered (a recipient was matched, and they confirm receipt), or straight to
+/// Confirmed (no recipient was matched — the volunteer drops the food at a drop-off
+/// location and their confirm-delivery completes the donation itself). Which one applies
+/// is decided by whether the listing has a RecipientId, not by the caller.
+/// </para>
 /// </summary>
 public static class ListingStateMachine
 {
@@ -14,7 +21,7 @@ public static class ListingStateMachine
     {
         [ListingStatus.Pending] = new[] { ListingStatus.Claimed, ListingStatus.Cancelled, ListingStatus.Expired },
         [ListingStatus.Claimed] = new[] { ListingStatus.PickedUp, ListingStatus.Pending },
-        [ListingStatus.PickedUp] = new[] { ListingStatus.Delivered },
+        [ListingStatus.PickedUp] = new[] { ListingStatus.Delivered, ListingStatus.Confirmed },
         [ListingStatus.Delivered] = new[] { ListingStatus.Confirmed },
     };
 

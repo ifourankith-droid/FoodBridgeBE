@@ -71,6 +71,55 @@ public sealed class UsersController : BaseController
     /// <summary>
     /// Uploads an avatar (JPG/PNG, max 2MB). Self only.
     /// </summary>
+    /// <summary>
+    /// Verification status and submitted documents. Self or admin — the volunteer tracks their own
+    /// progress here, and the admin reads the same payload to review it before verifying.
+    /// </summary>
+    [HttpGet("{id:guid}/verification")]
+    [ProducesResponseType(typeof(ApiResponse<UserVerificationResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ApiResponse<UserVerificationResponse>>> GetVerification(Guid id, CancellationToken cancellationToken)
+    {
+        var result = await _userService.GetVerificationAsync(id, cancellationToken);
+        return HandleResult(result);
+    }
+
+    /// <summary>
+    /// Uploads or replaces one verification document (<c>type</c>: <c>IdProof</c> or <c>Selfie</c>).
+    /// Self only — evidence is only meaningful if it came from the person it describes. Re-uploading
+    /// the same type replaces it, and the superseded file is deleted.
+    /// </summary>
+    [HttpPost("{id:guid}/documents")]
+    [Consumes("multipart/form-data")]
+    [RequestSizeLimit(5 * 1024 * 1024)]
+    [ProducesResponseType(typeof(ApiResponse<UserVerificationResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<ApiResponse<UserVerificationResponse>>> UploadDocument(
+        Guid id,
+        IFormFile? file,
+        [FromForm] string? type,
+        CancellationToken cancellationToken)
+    {
+        if (file is null || file.Length == 0)
+        {
+            return BadRequest(ApiResponse<UserVerificationResponse>.Fail("A file is required.", traceId: TraceId));
+        }
+
+        if (string.IsNullOrWhiteSpace(type))
+        {
+            return BadRequest(ApiResponse<UserVerificationResponse>.Fail("A document type is required (IdProof or Selfie).", traceId: TraceId));
+        }
+
+        var extension = Path.GetExtension(file.FileName);
+        await using var stream = file.OpenReadStream();
+        var result = await _userService.UploadDocumentAsync(id, type, stream, extension, file.Length, file.FileName, cancellationToken);
+        return HandleResult(result);
+    }
+
     [HttpPost("{id:guid}/avatar")]
     [Consumes("multipart/form-data")]
     [RequestSizeLimit(2 * 1024 * 1024)]

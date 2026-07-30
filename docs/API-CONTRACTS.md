@@ -21,7 +21,7 @@ See `docs/ARCHITECTURE.md` § Data dictionary → Enum value tables (Role, Accou
 - [Certificates, Leaderboard, Reports](#certificates-leaderboard-reports) — certificate list/detail/pdf, leaderboard (+ my-rank), donor/volunteer/recipient reports
 - [Dashboard](#dashboard) — one consolidated per-role dashboard endpoint (Donor/Volunteer/Recipient)
 - [Admin](#admin) — dashboard, listings/accounts browse, verify/suspend, disputes (raise/list/resolve), platform report
-- [Drop-off Locations (Admin)](#drop-off-locations-admin) — create, list, activate/deactivate fallback pickup destinations
+- [Drop-off Locations](#drop-off-locations) — admin CRUD for partner sites, plus the volunteer `hotspots` map (shared pool, cooldown-aware)
 
 ## Auth
 All 5 endpoints route under `/api/auth`. None require a role policy; `logout` and `me` require any authenticated JWT (`[Authorize]`).
@@ -90,6 +90,8 @@ Request (Donor/Volunteer):
   "capacityMeals": null
 }
 ```
+> **`role: "Recipient"` is currently refused** with 422 `"Recipient registration is currently unavailable. Please register as a Donor or a Volunteer."` — the platform runs on three roles (Donor, Volunteer, Admin) while `Features:RecipientRoleEnabled` is `false`. Accounts registered before the switch keep working normally. The Recipient request shape below is documented for when the flag is turned back on. See `docs/ARCHITECTURE.md` → Phase 15.
+
 Request (Recipient — `recipientType` and `capacityMeals` required):
 ```json
 {
@@ -104,7 +106,15 @@ Request (Recipient — `recipientType` and `capacityMeals` required):
   "capacityMeals": 200
 }
 ```
-`role` must be `Donor`, `Volunteer`, or `Recipient` (Admin cannot self-register). For `Recipient`: `recipientType` (`Individual` or `Organization`) is required; `capacityMeals` is required and > 0 (household size for `Individual`, daily serving capacity for `Organization` — both are just an int, the distinction is presentational). Donors/Volunteers get `accountStatus: Verified` immediately; Recipients get `Pending` (admin verifies later — Phase 9).
+`role` must be `Donor`, `Volunteer`, or `Recipient` (Admin cannot self-register). For `Recipient`: `recipientType` (`Individual` or `Organization`) is required; `capacityMeals` is required and > 0 (household size for `Individual`, daily serving capacity for `Organization` — both are just an int, the distinction is presentational).
+
+**Initial `accountStatus` by role:**
+
+| Role | Status | Why |
+|---|---|---|
+| Donor | `Verified` | A fake donor mostly wastes a volunteer's trip; gating them would block real surplus from being posted while it spoils. |
+| **Volunteer** | **`Pending`** | Takes physical custody of a stranger's food and travels with it. Must upload an ID + selfie and be approved before they can claim — see [`/verification`](#get-apiusersidverification). |
+| Recipient | `Pending` | Admin verifies before the matcher will route food to them. (Role currently disabled — Phase 15.) |
 
 > Note: the original spec also mentions a `dailyRequirement` field for recipients — there's no column for it in the Phase 1 schema, so it isn't accepted here.
 
@@ -112,8 +122,42 @@ Success (200): same shape as verify-otp's existing-user response (`token` + `use
 
 Errors:
 - 422 — `"Session expired or invalid. Please verify your mobile again."`
+- 422 — `"Recipient registration is currently unavailable. Please register as a Donor or a Volunteer."` (`role: "Recipient"` while the role is disabled)
 - 409 — `"An account with this mobile number already exists."`
 - 400 — validation errors (missing name, invalid role, etc.)
+
+### GET /api/users/{id}/verification
+`[Authorize]`, **self or admin** — the volunteer tracks their own progress, the admin reads the same payload to review it.
+
+Success (200) — `UserVerificationResponse`:
+```json
+{
+  "success": true, "message": "Success", "traceId": "...",
+  "data": {
+    "userId": "...", "role": "Volunteer", "accountStatus": "Pending",
+    "documents": [
+      { "id": "...", "type": "IdProof", "fileUrl": "/uploads/....jpg", "originalFileName": "my-aadhaar.jpg", "uploadedAtUtc": "2026-07-31T00:20:11" }
+    ],
+    "requiredDocumentTypes": ["IdProof", "Selfie"],
+    "missingDocumentTypes": ["Selfie"],
+    "isReadyForReview": false
+  }
+}
+```
+`isReadyForReview` is `true` only when the account is still `Pending` **and** nothing is missing — i.e. the ball is with the admin, not the user. Computed server-side; don't re-derive it. `requiredDocumentTypes` is `[]` for roles that need no documents (Donor), so a client can render "nothing needed" without hard-coding which roles those are.
+
+Errors: 403 — neither self nor admin; 404 — no such user.
+
+### POST /api/users/{id}/documents
+`[Authorize]`, **self only** — nobody, admin included, submits evidence on another person's behalf; the point is that it came from them.
+
+`multipart/form-data` with `file` (required) and `type` (required: `IdProof` or `Selfie`). Max 5MB; JPG/PNG/PDF — except a **`Selfie` must be an image**, since a PDF there would defeat comparing a face against the ID.
+
+**Re-uploading the same `type` replaces it** and deletes the superseded file, so a bad photo can simply be retaken rather than leaving the admin to guess which copy is current.
+
+Success (200): the refreshed `UserVerificationResponse` (same shape as above), so the client updates its checklist from one round-trip.
+
+Errors: 403 — not self; 422 — unknown `type`, a type this role doesn't need, file too large, wrong extension, or a PDF selfie; 400 — no file or no type; 404 — no such user.
 
 ### POST /api/auth/logout
 `[Authorize]`. Adds the current JWT's `jti` to an in-memory denylist until its natural expiry — stateless JWTs otherwise can't be revoked. Tradeoff: denylist doesn't survive an app restart and doesn't scale across instances (documented in `docs/ARCHITECTURE.md`).
@@ -311,6 +355,12 @@ The URL is directly servable (static files under `wwwroot/uploads`, same as avat
 ## Listings — Volunteer
 All 5 endpoints route under `/api/listings` and require `[Authorize(Policy = "VolunteerOnly")]` — any non-Volunteer role gets 403. `unclaim`/`confirm-pickup`/`confirm-delivery` additionally check that the caller is the listing's assigned `VolunteerId` (403 otherwise, enforced in `VolunteerListingService`, not a policy).
 
+> **Verification gate.** A volunteer registers as `AccountStatus.Pending` and must be approved by an admin (see [`/verification`](#get-apiusersidverification)) before they can take on work. `claim` and `confirm-pickup` return **422** for a `Pending` or `Suspended` volunteer:
+> - Pending — `"Your account is still being verified. Upload your ID and selfie, and an admin will review it shortly."`
+> - Suspended — `"Your account has been suspended. Please contact support."`
+>
+> `nearby` is **not** gated — an unverified volunteer can browse and see the hotspot map, they just can't act. `confirm-delivery` and `unclaim` are **deliberately not gated either**: a volunteer suspended while already carrying food must still be able to record where it went (otherwise the food is stranded with no audit trail), and releasing a claim is the outcome we want. So a mid-flight suspension stops them taking on anything *new* while still letting the current listing reach a clean end state.
+
 ### GET /api/listings/nearby
 Lists `Pending` listings within `radiusKm` of the given coordinates, ordered by ascending distance. Listings whose `pickupDeadlineUtc` has already passed are excluded even though their `Status` is still `Pending` (the expiry job that formally flips them hasn't run yet — see `docs/ARCHITECTURE.md` decisions log).
 
@@ -344,18 +394,73 @@ No request body. Success (200): a `ListingResponse` with `status: "Pending"` and
 If a volunteer claims and simply goes silent instead of calling this explicitly, the same `Claimed → Pending` transition happens automatically once `pickupDeadlineUtc` passes — see the expiry job note in `docs/ARCHITECTURE.md` decisions log.
 
 ### POST /api/listings/{id}/confirm-pickup
-Confirms pickup (`Claimed → PickedUp`). Assigned volunteer only. `multipart/form-data` with a required `photo` field (JPG/PNG, max 5MB). Auto-matches the nearest available Verified recipient via `RecipientMatcher` if the listing doesn't already have one.
+Confirms pickup (`Claimed → PickedUp`). Assigned volunteer only. `multipart/form-data` with a required `photo` field (JPG/PNG, max 5MB). Auto-matches the nearest available Verified recipient via `RecipientMatcher` if the listing doesn't already have one — **only while `Features:RecipientRoleEnabled` is true.** With the Recipient role disabled (the default) no matching happens at all, so `recipientId` stays `null` and `suggestedDropOffLocation` is always the destination. A `recipientId` the listing already carries (a recipient reserved it via `request`) is never overwritten either way.
 
 Success (200): same shape as `claim`, with `status: "PickedUp"`, a new timeline entry carrying `photoUrl`, and `recipientId` populated if a match was found (stays `null` if no recipient is currently available — pickup still succeeds). **When `recipientId` is still `null`, this response's `suggestedDropOffLocation` is populated with the nearest active [drop-off location](#drop-off-locations-admin)** (or `null` if none are configured) — a place to take the food instead of standing there with nowhere to go.
 
 Errors: 403 — not the assigned volunteer; 422 — `photo` missing/wrong type/too large, or the listing isn't currently `Claimed` (`"Cannot transition listing from '{status}' to 'PickedUp'."`); 400 — no file attached.
 
 ### POST /api/listings/{id}/confirm-delivery
-Confirms delivery (`PickedUp → Delivered`). Assigned volunteer only; requires a recipient to already be matched. `multipart/form-data` with a required `photo` field (JPG/PNG, max 5MB).
+Confirms delivery. Assigned volunteer only. `multipart/form-data` with a required `photo` field (JPG/PNG, max 5MB).
 
-Success (200): same shape, `status: "Delivered"`, new timeline entry with `photoUrl`.
+**Recording where the food went is required.** Send exactly one of:
 
-Errors: 403 — not the assigned volunteer; 422 — `"Cannot confirm delivery before a recipient has been matched."` (no `recipientId` yet), `photo` missing/wrong type/too large, or the listing isn't currently `PickedUp`; 400 — no file attached.
+| Form fields | Meaning |
+|---|---|
+| `dropOffLocationId` | A spot that already exists (get candidates from [`GET /api/dropoff-locations/hotspots`](#get-apidropoff-locationshotspots)). Must exist and be active. |
+| `latitude` + `longitude` + `locationName` (+ optional `locationAddress`) | A spot the volunteer found in the field. **Saved to the shared pool** (`source: "Volunteer"`, active immediately) so every volunteer can use it next time. |
+
+Supplying both forms, or neither, is a 422 — as is an unknown/inactive `dropOffLocationId`, a new spot with no name, or out-of-range coordinates. The new location and its delivery-log row are written in the same transaction as the status change.
+
+**Ends in one of two states, decided by whether the listing has a `recipientId` — not by the caller:**
+
+| `recipientId` | Transition | What happens |
+|---|---|---|
+| set | `PickedUp → Delivered` | The matched recipient still has to call `confirm-receipt`. Message: `"Delivery confirmed successfully."` |
+| `null` | `PickedUp → Confirmed` | **Completes the donation** — nobody is waiting to receive it (the food went to a drop-off location), so this call awards the volunteer's points, issues the donor's certificate, and notifies both, all in the same transaction `confirm-receipt` uses. Message: `"Delivery confirmed — donation completed and {points} points awarded."` |
+
+A `null` `recipientId` is the normal case while the Recipient role is disabled (`Features:RecipientRoleEnabled = false`), since `confirm-pickup` no longer auto-matches anyone. See `docs/ARCHITECTURE.md` → Phase 15.
+
+Success (200): same shape as `confirm-pickup`, `status` either `"Delivered"` or `"Confirmed"` per the table, plus a new timeline entry carrying `photoUrl`.
+
+Errors: 403 — not the assigned volunteer; 422 — `photo` missing/wrong type/too large, the listing isn't currently `PickedUp`, or any of the drop-off problems above; 400 — no file attached.
+
+> The previous `"Cannot confirm delivery before a recipient has been matched."` (422) no longer exists — an unmatched listing is now the completing path rather than an error.
+
+### GET /api/dropoff-locations/hotspots
+`[Authorize(Policy = "VolunteerOnly")]` — the volunteer's map of where food has been delivered before, so they can see where demand concentrates. Admin and Donor get 403.
+
+Query params: `latitude`, `longitude` (required), `radiusKm` (optional; default `DropOff:HotspotRadiusKm` = 10, clamped to `MaxHotspotRadiusKm` = 50), `page`, `pageSize`.
+
+**Ordered available-first, then nearest** — so `data[0]` is the best next destination. Don't re-sort client-side by distance alone, or a cooling-down spot floats to the top. Inactive spots are excluded entirely; spots on **cooldown are included but flagged**, so the map can explain why a closer spot isn't being suggested.
+
+Success (200) — `PagedResponse<DropOffHotspotResponse>`:
+```json
+{
+  "page": 1, "pageSize": 20, "totalCount": 5, "totalPages": 1,
+  "success": true, "message": "Success", "traceId": "...",
+  "data": [
+    {
+      "id": "...", "name": "Hope NGO Collection Point", "address": "Paldi",
+      "latitude": 23.0089, "longitude": 72.5601, "city": "Ahmedabad",
+      "source": "Admin", "distanceKm": 2.9,
+      "deliveryCount": 0, "totalMeals": 0, "lastDeliveredAtUtc": null,
+      "isCoolingDown": false, "cooldownUntilUtc": null
+    },
+    {
+      "id": "...", "name": "Paldi underbridge camp", "address": "Under the Paldi flyover, west side",
+      "latitude": 23.041, "longitude": 72.552, "city": null,
+      "source": "Volunteer", "distanceKm": 1.1,
+      "deliveryCount": 1, "totalMeals": 12, "lastDeliveredAtUtc": "2026-07-30T18:05:11",
+      "isCoolingDown": true, "cooldownUntilUtc": "2026-07-30T23:05:11"
+    }
+  ]
+}
+```
+
+**Cooldown.** After a delivery, a spot is hidden from the single-suggestion paths (`confirm-pickup`'s `suggestedDropOffLocation`, and reject-exhaustion's `DropOffLocationSuggested` notification) for `DropOff:CooldownHours` (default 5). It applies to **every volunteer, not just the one who delivered** — the place itself has been served, and another volunteer has no way of knowing that. `cooldownUntilUtc` says when it frees up.
+
+Errors: 422 — latitude/longitude out of range; 403 — not a Volunteer.
 
 ## Listings — Recipient
 All 8 endpoints route under `/api/listings` and require `[Authorize(Policy = "RecipientOnly")]`. `accept`/`reject`/`confirm-receipt`/`request` (DELETE) additionally check that the caller is the listing's current `RecipientId` (403 otherwise, enforced in `RecipientListingService`) — once a recipient rejects, they're no longer matched and lose access to that listing.
@@ -709,8 +814,14 @@ Success (200):
 }
 ```
 
-## Drop-off Locations (Admin)
-All 4 endpoints route under `/api/dropoff-locations` and require `[Authorize(Policy = "AdminOnly")]`. These are fallback pickup destinations (e.g. partner NGO/shelter collection points) — not browsed by volunteers directly; the nearest active one is automatically resolved and attached to a listing's `suggestedDropOffLocation` when no recipient is available (see `confirm-pickup` and `reject`, above).
+## Drop-off Locations
+All 5 endpoints route under `/api/dropoff-locations`. **Authorization is per-action, not class-level**: the 4 CRUD endpoints below are `AdminOnly`, while [`GET /hotspots`](#get-apidropoff-locationshotspots) is `VolunteerOnly`.
+
+This is the **shared pool** of places food can be taken, and it grows two ways:
+- **Admins** curate partner collection points (NGO offices, shelters, community fridges) via `POST` below → `source: "Admin"`.
+- **Volunteers** add spots they find in the field by naming a new one at `confirm-delivery` → `source: "Volunteer"`, active immediately with no moderation step. Admins see these badged in the list and can retire one with `deactivate`.
+
+The nearest **available** location (skipping anything on cooldown) is automatically resolved and attached to a listing's `suggestedDropOffLocation` when no recipient is available — see `confirm-pickup` and `reject`, above.
 
 ### POST /api/dropoff-locations
 Request:

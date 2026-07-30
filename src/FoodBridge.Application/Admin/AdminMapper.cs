@@ -1,5 +1,6 @@
 using FoodBridge.Application.Abstractions;
 using FoodBridge.Application.Admin.Dtos;
+using FoodBridge.Application.Users;
 using FoodBridge.Domain.Entities;
 using FoodBridge.Domain.Enums;
 
@@ -11,11 +12,41 @@ public static class AdminMapper
 
     public static StatusCountResponse ToAccountStatusResponse(this StatusCount statusCount) => new(((AccountStatus)statusCount.Status).ToString(), statusCount.Count);
 
-    public static AdminUserSummaryResponse ToResponse(this User user) => new(
-        user.Id, user.Mobile, user.Name, user.Role.ToString(), user.AccountStatus.ToString(), user.City, user.IsAvailable, user.CreatedAtUtc);
+    public static AdminUserSummaryResponse ToResponse(this User user) => Build(
+        user.Id, user.Mobile, user.Name, user.Role, user.AccountStatus, user.City, user.IsAvailable, user.CreatedAtUtc,
+        Array.Empty<UserDocumentType>());
 
-    public static AdminUserSummaryResponse ToResponse(this AdminUserSummary summary) => new(
-        summary.Id, summary.Mobile, summary.Name, summary.Role.ToString(), summary.AccountStatus.ToString(), summary.City, summary.IsAvailable, summary.CreatedAtUtc);
+    public static AdminUserSummaryResponse ToResponse(this AdminUserSummary summary) => Build(
+        summary.Id, summary.Mobile, summary.Name, summary.Role, summary.AccountStatus, summary.City, summary.IsAvailable, summary.CreatedAtUtc,
+        summary.SubmittedDocumentTypes);
+
+    /// <summary>
+    /// Shared projection so both overloads derive `requiredDocumentTypes`/`isReadyForReview` from
+    /// <see cref="VerificationPolicy"/> identically — the single-account response after a
+    /// verify/suspend must agree with the same row in the browse list.
+    /// </summary>
+    private static AdminUserSummaryResponse Build(
+        Guid id,
+        string mobile,
+        string name,
+        UserRole role,
+        AccountStatus accountStatus,
+        string? city,
+        bool isAvailable,
+        DateTime createdAtUtc,
+        IReadOnlyList<UserDocumentType> submitted)
+    {
+        var required = VerificationPolicy.RequiredDocuments(role);
+        var isReadyForReview = accountStatus == AccountStatus.Pending
+            && required.Count > 0
+            && required.All(submitted.Contains);
+
+        return new AdminUserSummaryResponse(
+            id, mobile, name, role.ToString(), accountStatus.ToString(), city, isAvailable, createdAtUtc,
+            required.Select(t => t.ToString()).ToList(),
+            submitted.Select(t => t.ToString()).ToList(),
+            isReadyForReview);
+    }
 
     public static AdminListingSummaryResponse ToResponse(this AdminListingSummary summary) => new(
         summary.Id, summary.Title, summary.Status.ToString(), summary.DonorId, summary.DonorName,

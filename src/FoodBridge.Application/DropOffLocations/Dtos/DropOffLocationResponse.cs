@@ -1,5 +1,6 @@
 namespace FoodBridge.Application.DropOffLocations.Dtos;
 
+/// <param name="Source">"Admin" for a curated partner site, "Volunteer" for one discovered in the field.</param>
 public sealed record DropOffLocationResponse(
     Guid Id,
     string Name,
@@ -8,4 +9,5 @@ public sealed record DropOffLocationResponse(
     decimal Longitude,
     string? City,
     bool IsActive,
+    string Source,
     DateTime CreatedAtUtc);

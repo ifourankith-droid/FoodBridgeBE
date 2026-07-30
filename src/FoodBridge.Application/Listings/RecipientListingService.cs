@@ -6,14 +6,12 @@ using FoodBridge.Domain.Entities;
 using FoodBridge.Domain.Enums;
 using FoodBridge.Domain.Exceptions;
 using FoodBridge.Domain.StateMachines;
+using Microsoft.Extensions.Options;
 
 namespace FoodBridge.Application.Listings;
 
 public sealed class RecipientListingService : IRecipientListingService
 {
-    /// <summary>Simple, explicit assumption — 1 point per meal delivered — since no point formula is specified.</summary>
-    private const int PointsPerMeal = 1;
-
     /// <summary>Browse radius for the available-nearby feed. Same bounds as the volunteer's.</summary>
     private const double DefaultRadiusKm = 10;
     private const double MaxRadiusKm = 50;
@@ -31,6 +29,7 @@ public sealed class RecipientListingService : IRecipientListingService
     private readonly INotificationDispatcher _notificationDispatcher;
     private readonly ICurrentUser _currentUser;
     private readonly IClock _clock;
+    private readonly DropOffSettings _dropOffSettings;
 
     public RecipientListingService(
         IListingRepository listingRepository,
@@ -39,7 +38,8 @@ public sealed class RecipientListingService : IRecipientListingService
         IDropOffLocationRepository dropOffLocationRepository,
         INotificationDispatcher notificationDispatcher,
         ICurrentUser currentUser,
-        IClock clock)
+        IClock clock,
+        IOptions<DropOffSettings> dropOffSettings)
     {
         _listingRepository = listingRepository;
         _userRepository = userRepository;
@@ -48,6 +48,7 @@ public sealed class RecipientListingService : IRecipientListingService
         _notificationDispatcher = notificationDispatcher;
         _currentUser = currentUser;
         _clock = clock;
+        _dropOffSettings = dropOffSettings.Value;
     }
 
     public async Task<Result<PagedResult<ListingAvailableNearbyResponse>>> GetAvailableNearbyAsync(decimal latitude, decimal longitude, double? radiusKm, int page, int pageSize, CancellationToken cancellationToken = default)
@@ -259,7 +260,13 @@ public sealed class RecipientListingService : IRecipientListingService
         Notification? volunteerNotification = null;
         if (newRecipientId is null)
         {
-            var nearestDropOff = await _dropOffLocationRepository.GetNearestActiveAsync(listing.Latitude, listing.Longitude, cancellationToken);
+            // Cooldown-aware, like confirm-pickup's suggestion: pointing the volunteer at a spot
+            // that was just served would create the duplicate the cooldown exists to prevent.
+            var nearestDropOff = await _dropOffLocationRepository.GetNearestAvailableAsync(
+                listing.Latitude,
+                listing.Longitude,
+                now - TimeSpan.FromHours(_dropOffSettings.CooldownHours),
+                cancellationToken);
             volunteerNotification = new Notification
             {
                 UserId = listing.VolunteerId!.Value,
@@ -292,65 +299,18 @@ public sealed class RecipientListingService : IRecipientListingService
         ListingStateMachine.EnsureCanTransition(listing.Status, ListingStatus.Confirmed);
 
         var now = _clock.UtcNow;
-        var timelineEvent = new ListingTimelineEvent
-        {
-            ListingId = listing.Id,
-            FromStatus = listing.Status,
-            ToStatus = ListingStatus.Confirmed,
-            ActorUserId = _currentUser.UserId,
-            Note = "Receipt confirmed by recipient.",
-            CreatedAtUtc = now,
-        };
-
-        var points = listing.QuantityMeals * PointsPerMeal;
-        var volunteerPoint = new VolunteerPoint
-        {
-            VolunteerId = listing.VolunteerId!.Value,
-            ListingId = listing.Id,
-            Points = points,
-            Reason = $"Delivered '{listing.Title}' ({listing.QuantityMeals} meals).",
-            CreatedAtUtc = now,
-            UpdatedAtUtc = now,
-        };
-
-        var certificate = new Certificate
-        {
-            DonorId = listing.DonorId,
-            ListingId = listing.Id,
-            MealsCount = listing.QuantityMeals,
-            IssuedAtUtc = now,
-            CreatedAtUtc = now,
-            UpdatedAtUtc = now,
-        };
-
-        var notifications = new List<Notification>
-        {
-            new()
-            {
-                UserId = listing.DonorId,
-                Type = "DonationConfirmed",
-                Title = "Donation confirmed",
-                Body = $"Your donation '{listing.Title}' was received and confirmed. A certificate has been issued.",
-                IsRead = false,
-                CreatedAtUtc = now,
-                UpdatedAtUtc = now,
-            },
-            new()
-            {
-                UserId = listing.VolunteerId!.Value,
-                Type = "PointsAwarded",
-                Title = "Points awarded",
-                Body = $"You earned {points} points for delivering '{listing.Title}'.",
-                IsRead = false,
-                CreatedAtUtc = now,
-                UpdatedAtUtc = now,
-            },
-        };
+        var completion = ListingCompletion.Build(
+            listing,
+            _currentUser.UserId,
+            note: "Receipt confirmed by recipient.",
+            photoUrl: null,
+            now);
+        var (timelineEvent, volunteerPoint, certificate, notifications, points) = completion;
 
         listing.Status = ListingStatus.Confirmed;
         listing.UpdatedAtUtc = now;
 
-        await _listingRepository.ConfirmReceiptAsync(listing, timelineEvent, volunteerPoint, certificate, notifications, cancellationToken);
+        await _listingRepository.ConfirmReceiptAsync(listing, timelineEvent, volunteerPoint, certificate, notifications, cancellationToken: cancellationToken);
 
         // Best-effort live push, after the atomic write has already committed — a
         // dispatch failure (e.g. nobody connected) must never roll back the receipt.

@@ -25,9 +25,17 @@ public interface IListingRepository
 
     /// <summary>
     /// Updates the listing's status and inserts the corresponding timeline event
-    /// in one transaction.
+    /// in one transaction, plus one Notifications row per entry in
+    /// <paramref name="notifications"/> — the other parties who need to hear about this
+    /// transition (e.g. the donor when their listing is picked up, the assigned volunteer
+    /// when the donor cancels). Sharing the transaction means a notification can never
+    /// describe a status change that rolled back.
     /// </summary>
-    Task ChangeStatusAsync(Listing listing, ListingTimelineEvent timelineEvent, CancellationToken cancellationToken = default);
+    /// <param name="dropOff">
+    /// Where the food was dropped, when this status change is a delivery. Written in the same
+    /// transaction, creating the location first if it's a new one the volunteer found.
+    /// </param>
+    Task ChangeStatusAsync(Listing listing, ListingTimelineEvent timelineEvent, IReadOnlyList<Notification>? notifications = null, DropOffRecord? dropOff = null, CancellationToken cancellationToken = default);
 
     Task<Guid> AddImageAsync(ListingImage image, CancellationToken cancellationToken = default);
 
@@ -36,9 +44,11 @@ public interface IListingRepository
     /// EstimatedPickupAtUtc set) and inserts the timeline event, in one conditional
     /// UPDATE + INSERT. Returns false if the listing was no longer Pending (already
     /// claimed, cancelled, etc.) — the caller distinguishes 404 (missing) from 409
-    /// (conflict) afterward.
+    /// (conflict) afterward. <paramref name="donorNotification"/> is inserted in the same
+    /// transaction but only once the UPDATE has won the race, so the losing claim in a
+    /// two-volunteer race never tells the donor their food was taken.
     /// </summary>
-    Task<bool> TryClaimAsync(Guid listingId, Guid volunteerId, DateTime? estimatedPickupAtUtc, ListingTimelineEvent claimEvent, CancellationToken cancellationToken = default);
+    Task<bool> TryClaimAsync(Guid listingId, Guid volunteerId, DateTime? estimatedPickupAtUtc, ListingTimelineEvent claimEvent, Notification? donorNotification = null, CancellationToken cancellationToken = default);
 
     Task<(IReadOnlyList<NearbyListing> Items, int TotalCount)> GetNearbyPendingAsync(decimal latitude, decimal longitude, double radiusMeters, DietType? dietType, MealType? mealType, int page, int pageSize, CancellationToken cancellationToken = default);
 
@@ -92,7 +102,7 @@ public interface IListingRepository
     /// with the generated number), and one Notifications insert per entry in
     /// <paramref name="notifications"/> — all in one transaction (all-or-nothing).
     /// </summary>
-    Task ConfirmReceiptAsync(Listing listing, ListingTimelineEvent timelineEvent, VolunteerPoint volunteerPoint, Certificate certificate, IReadOnlyList<Notification> notifications, CancellationToken cancellationToken = default);
+    Task ConfirmReceiptAsync(Listing listing, ListingTimelineEvent timelineEvent, VolunteerPoint volunteerPoint, Certificate certificate, IReadOnlyList<Notification> notifications, DropOffRecord? dropOff = null, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Atomically, in one sweep: (1) reverts every Claimed listing whose PickupDeadlineUtc
@@ -101,7 +111,10 @@ public interface IListingRepository
     /// who claimed and never showed up doesn't leave perishable food stuck forever; then
     /// (2) expires every Pending listing whose deadline has passed, including rows just
     /// reverted in step 1. Inserts a system timeline event (ActorUserId null) for each
-    /// change. Returns the expired and reverted-to-pending ids separately, for logging.
+    /// change, plus one notification per affected party — the donor whose listing expired, and
+    /// the volunteer whose claim lapsed — persisted in that same transaction. Returns the
+    /// expired and reverted-to-pending ids for logging, along with those notifications so the
+    /// caller can push them live after the commit.
     /// </summary>
-    Task<(IReadOnlyList<Guid> ExpiredIds, IReadOnlyList<Guid> RevertedToPendingIds)> ExpirePastDeadlineListingsAsync(DateTime nowUtc, CancellationToken cancellationToken = default);
+    Task<ExpirySweepResult> ExpirePastDeadlineListingsAsync(DateTime nowUtc, CancellationToken cancellationToken = default);
 }

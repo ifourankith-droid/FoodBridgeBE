@@ -82,10 +82,50 @@ Plus `PagedResponse<T> : ApiResponse<IReadOnlyList<T>>` with `Page, PageSize, To
 ```
 Pending  → Claimed (volunteer claim)     | Cancelled (donor) | Expired (job)
 Claimed  → PickedUp (volunteer + photo)  | Pending (volunteer un-claims — optional)
-PickedUp → Delivered (volunteer + photo) | PickedUp (recipient reject clears assignment)
+PickedUp → Delivered (volunteer + photo, recipient matched) | PickedUp (recipient reject clears assignment)
+         → Confirmed (volunteer + photo, no recipient matched) → points + certificate + notifications
 Delivered→ Confirmed (recipient)         → points + certificate + notifications
 ```
 Any transition not listed = 422 `BusinessRuleException` from `ListingStateMachine`.
+
+## Account verification (who may act)
+`Application/Users/VerificationPolicy` is the **single source of truth** — registration's initial
+status, required documents, the volunteer's own screen, the admin queue's `isReadyForReview`, and the
+claim-time gate all read it. Don't re-implement any of those rules elsewhere; the bug it replaced was
+exactly that kind of drift.
+- **Volunteers register `Pending`** and need an admin to review an uploaded photo ID + selfie
+  (`UserDocuments`). Donors stay auto-`Verified`. Admins are seeded.
+- **The gate covers acquiring work, not finishing it.** `claim`/`confirm-pickup` require `Verified`;
+  `confirm-delivery`/`unclaim` deliberately do not, so a volunteer suspended while already carrying
+  food can still record where it went and hand the claim back. Never "tighten" this by gating those
+  two — it strands food with no audit trail.
+- Full rationale: `docs/ARCHITECTURE.md` → Phase 18.
+
+## Deployment
+Azure runbook: **`docs/AZURE_DEPLOYMENT.md`**. Production uses Azure SQL with Entra ID
+(`Authentication="Active Directory Default"` — no password, so the connection string is committed).
+- `Jwt__Secret` **must** be supplied outside Development — startup throws otherwise, deliberately, so
+  the dev secret committed in `appsettings.json` can never sign real tokens.
+- `Cors:AllowedOrigins` must list the deployed frontend's origin.
+- `Bootstrap:AdminMobile` creates the first Admin (idempotent; never promotes an existing account) —
+  needed because seeds are Development-only and Admin can't self-register.
+- `Database:MigrateOnStartup` is `false` in Production; run `dotnet run --project src/FoodBridge.Migrations -- "<conn>"` once.
+
+## Active configuration
+- **`DropOff:CooldownHours`** (default `5`) — after a drop-off, that spot is hidden from the
+  nearest-spot suggestion for this long, and flagged `isCoolingDown` on the volunteer hotspot map.
+  **Global, not per-volunteer**: the place itself has just been served. Also
+  `DropOff:HotspotRadiusKm` (10) / `MaxHotspotRadiusKm` (50). See `docs/ARCHITECTURE.md` → Phase 17.
+
+## Active feature switches
+- **`Features:RecipientRoleEnabled`** (default `false`) — the platform currently runs on three roles:
+  **Donor, Volunteer, Admin**. Recipient registration is refused and `confirm-pickup` no longer
+  auto-matches a recipient, so a volunteer's `confirm-delivery` completes the donation itself
+  (`PickedUp → Confirmed`, awarding points and issuing the certificate). Existing Recipient accounts,
+  their endpoints, and their views all still work — completion behaviour keys off whether a listing has
+  a `RecipientId`, never off the flag directly, so both paths stay correct at once. The FE mirror is
+  `environment.recipientRoleEnabled`; **keep the two in step.** Full rationale: `docs/ARCHITECTURE.md`
+  → Phase 15.
 
 ## Phase plan
 See `docs/PLAN.md` for the full phase-by-phase task breakdown and acceptance criteria. Phases run one at a time, in order; each phase must satisfy its acceptance criteria before starting the next.

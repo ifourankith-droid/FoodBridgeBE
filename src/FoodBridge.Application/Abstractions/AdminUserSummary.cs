@@ -13,4 +13,11 @@ public sealed class AdminUserSummary
     public string? City { get; set; }
     public bool IsAvailable { get; set; }
     public DateTime CreatedAtUtc { get; set; }
+
+    /// <summary>
+    /// Verification evidence this user has uploaded. Populated by <c>AdminService</c> in one batched
+    /// query per page (not per row), so the queue can sort actionable accounts to the top without an
+    /// N+1. Empty for roles that need no documents.
+    /// </summary>
+    public IReadOnlyList<UserDocumentType> SubmittedDocumentTypes { get; set; } = Array.Empty<UserDocumentType>();
 }

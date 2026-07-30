@@ -22,5 +22,10 @@ public interface IVolunteerListingService
     Task<Result<ListingResponse>> ConfirmPickupAsync(Guid listingId, Stream photoContent, string photoExtension, long photoSizeBytes, CancellationToken cancellationToken = default);
 
     /// <summary>PickedUp → Delivered. Assigned volunteer only; requires a photo and a previously matched recipient.</summary>
-    Task<Result<ListingResponse>> ConfirmDeliveryAsync(Guid listingId, Stream photoContent, string photoExtension, long photoSizeBytes, CancellationToken cancellationToken = default);
+    /// <param name="dropOff">
+    /// Where the food was dropped. Required — recording it is what builds the shared pool of
+    /// recipient hotspots, and a delivery with no destination can't be audited. A brand-new spot
+    /// is created and logged in the same transaction as the delivery.
+    /// </param>
+    Task<Result<ListingResponse>> ConfirmDeliveryAsync(Guid listingId, Stream photoContent, string photoExtension, long photoSizeBytes, DropOffChoice dropOff, CancellationToken cancellationToken = default);
 }

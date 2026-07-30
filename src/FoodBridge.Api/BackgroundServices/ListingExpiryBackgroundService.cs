@@ -34,19 +34,35 @@ public sealed class ListingExpiryBackgroundService : BackgroundService
     {
         using var scope = _scopeFactory.CreateScope();
         var listingRepository = scope.ServiceProvider.GetRequiredService<IListingRepository>();
+        var dispatcher = scope.ServiceProvider.GetRequiredService<INotificationDispatcher>();
         var clock = scope.ServiceProvider.GetRequiredService<IClock>();
 
         try
         {
-            var (expiredIds, revertedIds) = await listingRepository.ExpirePastDeadlineListingsAsync(clock.UtcNow, cancellationToken);
-            if (revertedIds.Count > 0)
+            var sweep = await listingRepository.ExpirePastDeadlineListingsAsync(clock.UtcNow, cancellationToken);
+            if (sweep.RevertedToPendingIds.Count > 0)
             {
-                _logger.LogInformation("Listing expiry sweep reverted {Count} abandoned Claimed listing(s) back to Pending.", revertedIds.Count);
+                _logger.LogInformation("Listing expiry sweep reverted {Count} abandoned Claimed listing(s) back to Pending.", sweep.RevertedToPendingIds.Count);
             }
 
-            if (expiredIds.Count > 0)
+            if (sweep.ExpiredIds.Count > 0)
             {
-                _logger.LogInformation("Listing expiry sweep flipped {Count} listing(s) to Expired.", expiredIds.Count);
+                _logger.LogInformation("Listing expiry sweep flipped {Count} listing(s) to Expired.", sweep.ExpiredIds.Count);
+            }
+
+            // The rows are already committed; this is only the live push. Failures are logged
+            // and swallowed per notification so one dead connection can't stop the rest — the
+            // affected user still sees it via GET /api/notifications either way.
+            foreach (var notification in sweep.Notifications)
+            {
+                try
+                {
+                    await dispatcher.DispatchAsync(notification, cancellationToken);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    _logger.LogWarning(ex, "Failed to push expiry notification {NotificationId} to user {UserId}.", notification.Id, notification.UserId);
+                }
             }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)

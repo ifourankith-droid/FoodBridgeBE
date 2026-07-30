@@ -108,19 +108,34 @@ try
         }
     });
 
+    // Origins come from Cors:AllowedOrigins so a deployed frontend can be allowed without a code
+    // change; the Angular dev server stays the default when nothing is configured. AllowCredentials
+    // rules out a wildcard origin, so this has to be an explicit list either way.
+    var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>();
+    if (allowedOrigins is null || allowedOrigins.Length == 0)
+    {
+        allowedOrigins = new[] { "http://localhost:4200", "http://localhost:4201" };
+    }
+
     builder.Services.AddCors(options =>
     {
-        options.AddPolicy("AllowAngularDev", policy => policy
-            .WithOrigins("http://localhost:4200")
+        options.AddPolicy("AllowConfiguredOrigins", policy => policy
+            .WithOrigins(allowedOrigins)
             .AllowAnyHeader()
             .AllowAnyMethod()
             .AllowCredentials());
     });
 
+    // Product feature switches. Bound unconditionally (unlike OtpSettings) because these
+    // must take effect in every environment, not just Development.
+    builder.Services.Configure<FeatureSettings>(builder.Configuration.GetSection(FeatureSettings.SectionName));
+    builder.Services.Configure<DropOffSettings>(builder.Configuration.GetSection(DropOffSettings.SectionName));
+
     builder.Services.AddSingleton<IClock, SystemClock>();
     builder.Services.AddScoped<IDbConnectionFactory, SqlConnectionFactory>();
 
     builder.Services.AddScoped<IUserRepository, UserRepository>();
+    builder.Services.AddScoped<IUserDocumentRepository, UserDocumentRepository>();
     builder.Services.AddScoped<IOtpCodeRepository, OtpCodeRepository>();
 
     // Real OTP delivery is opt-in: stays MockSmsProvider (logs the code, sends nothing)
@@ -196,6 +211,22 @@ try
 
     builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection(JwtSettings.SectionName));
     var jwtSettings = builder.Configuration.GetSection(JwtSettings.SectionName).Get<JwtSettings>() ?? new JwtSettings();
+
+    // appsettings.Production.json deliberately carries no Jwt section — but the *base*
+    // appsettings.json does, and base config is always loaded first, so a real deployment would
+    // otherwise silently sign tokens with a secret that is committed to source control. Anyone
+    // holding the repo could mint a valid admin token. Fail loudly instead: a startup crash with a
+    // clear message beats a quietly forgeable authentication scheme.
+    const string CommittedDevSecret = "ADg2Oa0rofyUwOH5pRnSJO+ftSdO8OujVDwJi6SyOF1zgD1qlfVU9Ra6Vw3/RA7b";
+    if (!builder.Environment.IsDevelopment()
+        && (string.IsNullOrWhiteSpace(jwtSettings.Secret) || jwtSettings.Secret == CommittedDevSecret))
+    {
+        throw new InvalidOperationException(
+            $"Jwt:Secret is missing or is still the checked-in development value, and the current " +
+            $"environment is '{builder.Environment.EnvironmentName}'. Supply a real secret (32+ random " +
+            "bytes, base64) as the environment variable 'Jwt__Secret' — in Azure App Service, add it " +
+            "under Settings > Environment variables > App settings. Never commit it.");
+    }
 
     // Only bound in Development, even if the "Otp" key ever leaked into a non-dev
     // config file — AuthService falls back to a random OTP whenever this section
@@ -283,7 +314,7 @@ try
 
     app.UseHttpsRedirection();
     app.UseStaticFiles();
-    app.UseCors("AllowAngularDev");
+    app.UseCors("AllowConfiguredOrigins");
     app.UseAuthentication();
     app.UseAuthorization();
     app.MapControllers();
@@ -296,6 +327,9 @@ try
         var runner = scope.ServiceProvider.GetRequiredService<IMigrationRunner>();
         runner.MigrateUp();
     }
+
+    // After migrations, so the Users table is guaranteed to exist on a first deployment.
+    await AdminBootstrapper.EnsureAdminAsync(app.Services, app.Configuration, app.Logger);
 
     app.Run();
 }

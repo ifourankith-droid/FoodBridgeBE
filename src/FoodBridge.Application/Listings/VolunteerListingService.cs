@@ -2,10 +2,12 @@ using FoodBridge.Application.Abstractions;
 using FoodBridge.Application.Common;
 using FoodBridge.Application.DropOffLocations;
 using FoodBridge.Application.Listings.Dtos;
+using FoodBridge.Application.Users;
 using FoodBridge.Domain.Entities;
 using FoodBridge.Domain.Enums;
 using FoodBridge.Domain.Exceptions;
 using FoodBridge.Domain.StateMachines;
+using Microsoft.Extensions.Options;
 
 namespace FoodBridge.Application.Listings;
 
@@ -21,8 +23,11 @@ public sealed class VolunteerListingService : IVolunteerListingService
     private readonly IRecipientMatcher _recipientMatcher;
     private readonly IDropOffLocationRepository _dropOffLocationRepository;
     private readonly IFileStorage _fileStorage;
+    private readonly INotificationDispatcher _notificationDispatcher;
     private readonly ICurrentUser _currentUser;
     private readonly IClock _clock;
+    private readonly FeatureSettings _features;
+    private readonly DropOffSettings _dropOffSettings;
 
     public VolunteerListingService(
         IListingRepository listingRepository,
@@ -30,16 +35,22 @@ public sealed class VolunteerListingService : IVolunteerListingService
         IRecipientMatcher recipientMatcher,
         IDropOffLocationRepository dropOffLocationRepository,
         IFileStorage fileStorage,
+        INotificationDispatcher notificationDispatcher,
         ICurrentUser currentUser,
-        IClock clock)
+        IClock clock,
+        IOptions<FeatureSettings> features,
+        IOptions<DropOffSettings> dropOffSettings)
     {
         _listingRepository = listingRepository;
         _userRepository = userRepository;
         _recipientMatcher = recipientMatcher;
         _dropOffLocationRepository = dropOffLocationRepository;
         _fileStorage = fileStorage;
+        _notificationDispatcher = notificationDispatcher;
         _currentUser = currentUser;
         _clock = clock;
+        _features = features.Value;
+        _dropOffSettings = dropOffSettings.Value;
     }
 
     public async Task<Result<PagedResult<ListingNearbyResponse>>> GetNearbyAsync(decimal latitude, decimal longitude, double? radiusKm, string? dietType, string? mealType, int page, int pageSize, CancellationToken cancellationToken = default)
@@ -96,6 +107,12 @@ public sealed class VolunteerListingService : IVolunteerListingService
         var volunteerId = _currentUser.UserId;
         var now = _clock.UtcNow;
 
+        var blocked = await CheckCanTakeOnWorkAsync(cancellationToken);
+        if (blocked is not null)
+        {
+            return Result.Failure<ListingResponse>(blocked);
+        }
+
         if (estimatedPickupAtUtc.HasValue)
         {
             if (estimatedPickupAtUtc.Value <= now)
@@ -126,7 +143,22 @@ public sealed class VolunteerListingService : IVolunteerListingService
             CreatedAtUtc = now,
         };
 
-        var claimed = await _listingRepository.TryClaimAsync(listingId, volunteerId, estimatedPickupAtUtc, claimEvent, cancellationToken);
+        // The donor needs to know someone is coming, and who. Built before the claim so it
+        // can ride the same transaction — the repository only inserts it if the conditional
+        // UPDATE actually won, so the loser of a two-volunteer race notifies nobody.
+        var listingForNotify = await _listingRepository.GetByIdAsync(listingId, cancellationToken);
+        if (listingForNotify is null)
+        {
+            throw new NotFoundException("Listing", listingId);
+        }
+
+        var donorNotification = ListingNotifications.Claimed(
+            listingForNotify,
+            await GetVolunteerNameAsync(volunteerId, cancellationToken),
+            estimatedPickupAtUtc,
+            now);
+
+        var claimed = await _listingRepository.TryClaimAsync(listingId, volunteerId, estimatedPickupAtUtc, claimEvent, donorNotification, cancellationToken);
         if (!claimed)
         {
             var existing = await _listingRepository.GetByIdAsync(listingId, cancellationToken);
@@ -137,6 +169,8 @@ public sealed class VolunteerListingService : IVolunteerListingService
 
             throw new ConflictException($"Listing is no longer available to claim (current status: {existing.Status}).");
         }
+
+        await DispatchAsync(donorNotification, cancellationToken);
 
         return Result.Success(await BuildResponseAsync(listingId, cancellationToken), "Listing claimed successfully.");
     }
@@ -157,12 +191,18 @@ public sealed class VolunteerListingService : IVolunteerListingService
             CreatedAtUtc = now,
         };
 
+        // Built before VolunteerId is cleared, and sent to the donor: their food is
+        // perishable and now needs a different volunteer, so silence is the wrong answer.
+        var donorNotification = ListingNotifications.Unclaimed(listing, now);
+
         listing.Status = ListingStatus.Pending;
         listing.VolunteerId = null;
         listing.EstimatedPickupAtUtc = null;
         listing.UpdatedAtUtc = now;
 
-        await _listingRepository.ChangeStatusAsync(listing, timelineEvent, cancellationToken);
+        await _listingRepository.ChangeStatusAsync(listing, timelineEvent, new[] { donorNotification }, cancellationToken: cancellationToken);
+
+        await DispatchAsync(donorNotification, cancellationToken);
 
         return Result.Success(await BuildResponseAsync(listing, cancellationToken), "Claim released successfully.");
     }
@@ -172,6 +212,14 @@ public sealed class VolunteerListingService : IVolunteerListingService
         var listing = await GetAssignedListingOrThrowAsync(listingId, cancellationToken);
         ListingStateMachine.EnsureCanTransition(listing.Status, ListingStatus.PickedUp);
 
+        // Taking custody counts as new work. A volunteer suspended between claiming and collecting
+        // should hand the listing back (unclaim), not walk away with the food.
+        var blocked = await CheckCanTakeOnWorkAsync(cancellationToken);
+        if (blocked is not null)
+        {
+            return Result.Failure<ListingResponse>(blocked);
+        }
+
         var photoValidation = ValidatePhoto(photoSizeBytes, photoExtension);
         if (photoValidation is not null)
         {
@@ -180,7 +228,12 @@ public sealed class VolunteerListingService : IVolunteerListingService
 
         var photoUrl = await _fileStorage.SaveAsync(photoContent, photoExtension.ToLowerInvariant(), cancellationToken);
 
-        if (listing.RecipientId is null)
+        // With the Recipient role disabled, nothing should auto-assign a recipient — the
+        // volunteer delivers to a drop-off location and completes the donation themselves.
+        // A recipient the listing already has (they requested it proactively, or it was
+        // matched while the role was enabled) is left alone, so in-flight donations keep
+        // running the full accept/reject/confirm-receipt flow.
+        if (listing.RecipientId is null && _features.RecipientRoleEnabled)
         {
             listing.RecipientId = await _recipientMatcher.FindNearestAvailableRecipientAsync(listing.Latitude, listing.Longitude, cancellationToken: cancellationToken);
         }
@@ -192,7 +245,9 @@ public sealed class VolunteerListingService : IVolunteerListingService
             FromStatus = listing.Status,
             ToStatus = ListingStatus.PickedUp,
             ActorUserId = _currentUser.UserId,
-            Note = listing.RecipientId is null ? "Picked up by volunteer. No recipient available yet." : "Picked up by volunteer.",
+            Note = listing.RecipientId is null
+                ? "Picked up by volunteer. Drop off at the suggested location."
+                : "Picked up by volunteer.",
             PhotoUrl = photoUrl,
             CreatedAtUtc = now,
         };
@@ -200,7 +255,16 @@ public sealed class VolunteerListingService : IVolunteerListingService
         listing.Status = ListingStatus.PickedUp;
         listing.UpdatedAtUtc = now;
 
-        await _listingRepository.ChangeStatusAsync(listing, timelineEvent, cancellationToken);
+        // The donor's food has physically left their premises — the single most important
+        // moment for them to hear about, and previously the point where they went silent.
+        var donorNotification = ListingNotifications.PickedUp(
+            listing,
+            await GetVolunteerNameAsync(_currentUser.UserId, cancellationToken),
+            now);
+
+        await _listingRepository.ChangeStatusAsync(listing, timelineEvent, new[] { donorNotification }, cancellationToken: cancellationToken);
+
+        await DispatchAsync(donorNotification, cancellationToken);
 
         var response = await BuildResponseAsync(listing, cancellationToken);
         if (listing.RecipientId is null)
@@ -209,22 +273,32 @@ public sealed class VolunteerListingService : IVolunteerListingService
             // destination synchronously here — no separate notification needed, unlike
             // RecipientListingService.RejectAsync where a *different* user's action is
             // what exhausts the recipient search.
-            var nearestDropOff = await _dropOffLocationRepository.GetNearestActiveAsync(listing.Latitude, listing.Longitude, cancellationToken);
+            // Cooldown-aware: a spot that has just received food is not a useful suggestion,
+            // so the nearest *available* one is offered instead.
+            var nearestDropOff = await _dropOffLocationRepository.GetNearestAvailableAsync(
+                listing.Latitude,
+                listing.Longitude,
+                now - TimeSpan.FromHours(_dropOffSettings.CooldownHours),
+                cancellationToken);
             response = response with { SuggestedDropOffLocation = nearestDropOff?.ToResponse() };
         }
 
         return Result.Success(response, "Pickup confirmed successfully.");
     }
 
-    public async Task<Result<ListingResponse>> ConfirmDeliveryAsync(Guid listingId, Stream photoContent, string photoExtension, long photoSizeBytes, CancellationToken cancellationToken = default)
+    public async Task<Result<ListingResponse>> ConfirmDeliveryAsync(Guid listingId, Stream photoContent, string photoExtension, long photoSizeBytes, DropOffChoice dropOff, CancellationToken cancellationToken = default)
     {
         var listing = await GetAssignedListingOrThrowAsync(listingId, cancellationToken);
-        ListingStateMachine.EnsureCanTransition(listing.Status, ListingStatus.Delivered);
 
-        if (listing.RecipientId is null)
-        {
-            throw new BusinessRuleException("Cannot confirm delivery before a recipient has been matched.");
-        }
+        // A donation finishes one of two ways, decided by whether anyone is actually
+        // waiting to receive it — never by the caller. With a matched recipient the
+        // volunteer only reports Delivered and the recipient confirms receipt. With none
+        // (the Recipient role is disabled, so nothing was matched) the food went to a
+        // drop-off location and there is nobody left to confirm, so this call completes
+        // the donation: points, certificate, and notifications, in one transaction.
+        var completesDonation = listing.RecipientId is null;
+        var targetStatus = completesDonation ? ListingStatus.Confirmed : ListingStatus.Delivered;
+        ListingStateMachine.EnsureCanTransition(listing.Status, targetStatus);
 
         var photoValidation = ValidatePhoto(photoSizeBytes, photoExtension);
         if (photoValidation is not null)
@@ -232,27 +306,204 @@ public sealed class VolunteerListingService : IVolunteerListingService
             return Result.Failure<ListingResponse>(photoValidation);
         }
 
+        var now = _clock.UtcNow;
+
+        // Resolved before the photo is written to storage: a rejected drop-off choice would
+        // otherwise leave an orphaned file behind for a request that failed anyway.
+        var dropOffResult = await ResolveDropOffAsync(listing, dropOff, now, cancellationToken);
+        if (!dropOffResult.IsSuccess)
+        {
+            return Result.Failure<ListingResponse>(dropOffResult.Message);
+        }
+
+        var dropOffRecord = dropOffResult.Data!;
         var photoUrl = await _fileStorage.SaveAsync(photoContent, photoExtension.ToLowerInvariant(), cancellationToken);
 
-        var now = _clock.UtcNow;
-        var timelineEvent = new ListingTimelineEvent
+        if (!completesDonation)
         {
-            ListingId = listing.Id,
-            FromStatus = listing.Status,
-            ToStatus = ListingStatus.Delivered,
-            ActorUserId = _currentUser.UserId,
-            Note = "Delivered by volunteer.",
-            PhotoUrl = photoUrl,
-            CreatedAtUtc = now,
-        };
+            var timelineEvent = new ListingTimelineEvent
+            {
+                ListingId = listing.Id,
+                FromStatus = listing.Status,
+                ToStatus = ListingStatus.Delivered,
+                ActorUserId = _currentUser.UserId,
+                Note = "Delivered by volunteer.",
+                PhotoUrl = photoUrl,
+                CreatedAtUtc = now,
+            };
 
-        listing.Status = ListingStatus.Delivered;
+            listing.Status = ListingStatus.Delivered;
+            listing.UpdatedAtUtc = now;
+
+            // No extra notification here: on this path the donor still gets DonationConfirmed
+            // when the recipient confirms receipt, which is the outcome they care about.
+            await _listingRepository.ChangeStatusAsync(listing, timelineEvent, dropOff: dropOffRecord, cancellationToken: cancellationToken);
+
+            return Result.Success(await BuildResponseAsync(listing, cancellationToken), "Delivery confirmed successfully.");
+        }
+
+        var completion = ListingCompletion.Build(
+            listing,
+            _currentUser.UserId,
+            note: "Delivered to drop-off location and completed by volunteer.",
+            photoUrl,
+            now);
+
+        listing.Status = ListingStatus.Confirmed;
         listing.UpdatedAtUtc = now;
 
-        await _listingRepository.ChangeStatusAsync(listing, timelineEvent, cancellationToken);
+        await _listingRepository.ConfirmReceiptAsync(
+            listing,
+            completion.TimelineEvent,
+            completion.VolunteerPoint,
+            completion.Certificate,
+            completion.Notifications,
+            dropOffRecord,
+            cancellationToken);
 
-        return Result.Success(await BuildResponseAsync(listing, cancellationToken), "Delivery confirmed successfully.");
+        // Best-effort live push, after the atomic write has already committed — a dispatch
+        // failure must never roll back a completed donation. Same ordering as every other
+        // notification in this app; GET /api/notifications is the fallback.
+        foreach (var notification in completion.Notifications)
+        {
+            await _notificationDispatcher.DispatchAsync(notification, cancellationToken);
+        }
+
+        return Result.Success(
+            await BuildResponseAsync(listing, cancellationToken),
+            $"Delivery confirmed — donation completed and {completion.Points} points awarded.");
     }
+
+    /// <summary>
+    /// Turns the volunteer's drop-off choice into the rows to write: either a delivery pointed at
+    /// an existing location, or a brand-new location plus its first delivery. Returns a failed
+    /// <see cref="Result{T}"/> (→ 422) for an ambiguous, incomplete, or unusable choice rather
+    /// than throwing, matching how every other expected business failure is reported here.
+    /// </summary>
+    private async Task<Result<DropOffRecord>> ResolveDropOffAsync(Listing listing, DropOffChoice dropOff, DateTime nowUtc, CancellationToken cancellationToken)
+    {
+        if (dropOff.IsExisting && (dropOff.Latitude.HasValue || dropOff.Longitude.HasValue || !string.IsNullOrWhiteSpace(dropOff.Name)))
+        {
+            return Result.Failure<DropOffRecord>("Provide either dropOffLocationId or a new location (latitude, longitude, locationName) — not both.");
+        }
+
+        var delivery = new DropOffDelivery
+        {
+            VolunteerId = _currentUser.UserId,
+            ListingId = listing.Id,
+            MealsCount = listing.QuantityMeals,
+            DeliveredAtUtc = nowUtc,
+            CreatedAtUtc = nowUtc,
+        };
+
+        if (dropOff.IsExisting)
+        {
+            var existing = await _dropOffLocationRepository.GetByIdAsync(dropOff.LocationId!.Value, cancellationToken);
+            if (existing is null)
+            {
+                return Result.Failure<DropOffRecord>("The selected drop-off location does not exist.");
+            }
+
+            if (!existing.IsActive)
+            {
+                return Result.Failure<DropOffRecord>("The selected drop-off location is no longer active. Please choose another.");
+            }
+
+            delivery.DropOffLocationId = existing.Id;
+            return Result.Success(new DropOffRecord(delivery));
+        }
+
+        // Not an existing location, so it has to be a complete new one. Report the specific
+        // missing piece rather than a blanket "invalid", since this is a form the volunteer fills.
+        if (!dropOff.Latitude.HasValue || !dropOff.Longitude.HasValue)
+        {
+            return Result.Failure<DropOffRecord>("Where did you drop it off? Provide dropOffLocationId, or latitude and longitude for a new location.");
+        }
+
+        if (string.IsNullOrWhiteSpace(dropOff.Name))
+        {
+            return Result.Failure<DropOffRecord>("A new drop-off location needs a name.");
+        }
+
+        if (dropOff.Latitude is < -90 or > 90)
+        {
+            return Result.Failure<DropOffRecord>("Latitude must be between -90 and 90.");
+        }
+
+        if (dropOff.Longitude is < -180 or > 180)
+        {
+            return Result.Failure<DropOffRecord>("Longitude must be between -180 and 180.");
+        }
+
+        var name = dropOff.Name!.Trim();
+        var newLocation = new DropOffLocation
+        {
+            Name = name,
+            // The address is optional for a field-discovered spot — often there isn't one, and
+            // the coordinates are the part that actually matters for routing.
+            Address = string.IsNullOrWhiteSpace(dropOff.Address) ? name : dropOff.Address!.Trim(),
+            Latitude = dropOff.Latitude.Value,
+            Longitude = dropOff.Longitude.Value,
+            City = null,
+            IsActive = true,
+            Source = DropOffLocationSource.Volunteer,
+            CreatedByUserId = _currentUser.UserId,
+            CreatedAtUtc = nowUtc,
+            UpdatedAtUtc = nowUtc,
+        };
+
+        return Result.Success(new DropOffRecord(delivery, newLocation));
+    }
+
+    /// <summary>
+    /// Refuses the action unless this volunteer has passed admin verification, returning the
+    /// blocking message or null when they're clear.
+    /// <para>
+    /// Applied to <b>claim</b> and <b>confirm-pickup</b> only — the two operations that take on new
+    /// custody of food. Deliberately <em>not</em> applied to confirm-delivery or unclaim: a volunteer
+    /// suspended while already carrying food must still be able to record where it went (blocking
+    /// that strands the food with no audit trail), and releasing a claim is the outcome we want, not
+    /// one to prevent. So a mid-flight suspension stops them taking anything *new* while still
+    /// letting the current listing reach a clean end state.
+    /// </para>
+    /// <para>
+    /// This also closes a pre-existing hole: nothing here checked AccountStatus at all, so admin
+    /// Suspend previously only stopped a volunteer's push notifications — they could still claim,
+    /// collect and deliver.
+    /// </para>
+    /// </summary>
+    private async Task<string?> CheckCanTakeOnWorkAsync(CancellationToken cancellationToken)
+    {
+        var volunteer = await _userRepository.GetByIdAsync(_currentUser.UserId, cancellationToken);
+        if (volunteer is null)
+        {
+            throw new NotFoundException("User", _currentUser.UserId);
+        }
+
+        return VerificationPolicy.CanTakeOnWork(volunteer.Role, volunteer.AccountStatus)
+            ? null
+            : VerificationPolicy.BlockedReason(volunteer.AccountStatus);
+    }
+
+    /// <summary>
+    /// The volunteer's display name for a donor-facing notification body — a donor who is
+    /// handing food to a stranger should be told who. Falls back to a neutral label rather
+    /// than failing the whole operation if the lookup somehow comes back empty.
+    /// </summary>
+    private async Task<string> GetVolunteerNameAsync(Guid volunteerId, CancellationToken cancellationToken)
+    {
+        var volunteer = await _userRepository.GetByIdAsync(volunteerId, cancellationToken);
+        return string.IsNullOrWhiteSpace(volunteer?.Name) ? "A volunteer" : volunteer!.Name;
+    }
+
+    /// <summary>
+    /// Best-effort live push, always called *after* the owning transaction has committed —
+    /// a SignalR failure (nobody connected, transient fault) must never roll back the status
+    /// change it describes. The row is already persisted, so GET /api/notifications is the
+    /// fallback for anyone who wasn't listening.
+    /// </summary>
+    private Task DispatchAsync(Notification notification, CancellationToken cancellationToken) =>
+        _notificationDispatcher.DispatchAsync(notification, cancellationToken);
 
     private static string? ValidatePhoto(long photoSizeBytes, string photoExtension)
     {

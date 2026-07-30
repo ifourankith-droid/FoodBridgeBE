@@ -1,5 +1,11 @@
 namespace FoodBridge.Application.Admin.Dtos;
 
+/// <param name="RequiredDocumentTypes">What this role must submit; empty when none is needed.</param>
+/// <param name="SubmittedDocumentTypes">What they've actually uploaded.</param>
+/// <param name="IsReadyForReview">
+/// Pending, and everything required is in — the accounts the admin can actually act on. Lets the
+/// queue separate "waiting on me" from "waiting on them" without the client re-deriving the rule.
+/// </param>
 public sealed record AdminUserSummaryResponse(
     Guid Id,
     string Mobile,
@@ -8,4 +14,7 @@ public sealed record AdminUserSummaryResponse(
     string AccountStatus,
     string? City,
     bool IsAvailable,
-    DateTime CreatedAtUtc);
+    DateTime CreatedAtUtc,
+    IReadOnlyList<string> RequiredDocumentTypes,
+    IReadOnlyList<string> SubmittedDocumentTypes,
+    bool IsReadyForReview);

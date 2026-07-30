@@ -2,7 +2,9 @@ using FoodBridge.Application.Abstractions;
 using FoodBridge.Application.Common;
 using FoodBridge.Application.DropOffLocations.Dtos;
 using FoodBridge.Domain.Entities;
+using FoodBridge.Domain.Enums;
 using FoodBridge.Domain.Exceptions;
+using Microsoft.Extensions.Options;
 
 namespace FoodBridge.Application.DropOffLocations;
 
@@ -10,11 +12,53 @@ public sealed class DropOffLocationService : IDropOffLocationService
 {
     private readonly IDropOffLocationRepository _dropOffLocationRepository;
     private readonly IClock _clock;
+    private readonly DropOffSettings _settings;
 
-    public DropOffLocationService(IDropOffLocationRepository dropOffLocationRepository, IClock clock)
+    public DropOffLocationService(IDropOffLocationRepository dropOffLocationRepository, IClock clock, IOptions<DropOffSettings> settings)
     {
         _dropOffLocationRepository = dropOffLocationRepository;
         _clock = clock;
+        _settings = settings.Value;
+    }
+
+    public async Task<Result<PagedResult<DropOffHotspotResponse>>> GetHotspotsAsync(decimal latitude, decimal longitude, double? radiusKm, int page, int pageSize, CancellationToken cancellationToken = default)
+    {
+        if (latitude is < -90 or > 90)
+        {
+            return Result.Failure<PagedResult<DropOffHotspotResponse>>("Latitude must be between -90 and 90.");
+        }
+
+        if (longitude is < -180 or > 180)
+        {
+            return Result.Failure<PagedResult<DropOffHotspotResponse>>("Longitude must be between -180 and 180.");
+        }
+
+        // Same clamp-don't-reject approach the volunteer's nearby-listings query already uses for
+        // its radius, so an over-large value degrades to the maximum rather than erroring.
+        var effectiveRadiusKm = radiusKm switch
+        {
+            null or <= 0 => _settings.HotspotRadiusKm,
+            var value when value > _settings.MaxHotspotRadiusKm => _settings.MaxHotspotRadiusKm,
+            var value => value.Value,
+        };
+
+        var (normalizedPage, normalizedPageSize) = PaginationHelper.Normalize(page, pageSize);
+
+        var (items, totalCount) = await _dropOffLocationRepository.GetHotspotsAsync(
+            latitude,
+            longitude,
+            effectiveRadiusKm * 1000,
+            _clock.UtcNow,
+            TimeSpan.FromHours(_settings.CooldownHours),
+            normalizedPage,
+            normalizedPageSize,
+            cancellationToken);
+
+        return Result.Success(new PagedResult<DropOffHotspotResponse>(
+            items.Select(h => h.ToResponse()).ToList(),
+            totalCount,
+            normalizedPage,
+            normalizedPageSize));
     }
 
     public async Task<Result<DropOffLocationResponse>> CreateAsync(CreateDropOffLocationRequest request, CancellationToken cancellationToken = default)
@@ -28,6 +72,8 @@ public sealed class DropOffLocationService : IDropOffLocationService
             Longitude = request.Longitude,
             City = request.City,
             IsActive = true,
+            Source = DropOffLocationSource.Admin,
+            CreatedByUserId = null,
             CreatedAtUtc = now,
             UpdatedAtUtc = now,
         };

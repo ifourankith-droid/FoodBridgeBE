@@ -29,4 +29,29 @@ public sealed class LocalFileStorage : IFileStorage
 
         return $"{_urlPrefix}/{fileName}";
     }
+
+    public Task DeleteAsync(string fileUrl, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(fileUrl))
+        {
+            return Task.CompletedTask;
+        }
+
+        // Only ever the bare filename is used, never the caller's path. A stored URL is
+        // trusted today, but treating it as untrusted costs nothing and means a future caller
+        // can't turn "/uploads/../../appsettings.json" into a deletion.
+        var fileName = Path.GetFileName(fileUrl);
+        if (string.IsNullOrEmpty(fileName))
+        {
+            return Task.CompletedTask;
+        }
+
+        var fullPath = Path.Combine(_rootPath, fileName);
+        if (File.Exists(fullPath))
+        {
+            File.Delete(fullPath);
+        }
+
+        return Task.CompletedTask;
+    }
 }
