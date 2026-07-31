@@ -158,6 +158,43 @@ try
     var twilioSettings = builder.Configuration.GetSection(TwilioSettings.SectionName).Get<TwilioSettings>() ?? new TwilioSettings();
     if (twilioSettings.Enabled)
     {
+        // Validated at startup rather than discovered on the first send. Every one of these
+        // mistakes otherwise surfaces as an opaque Twilio 400 at the moment a real user is waiting
+        // on a login code, which is the worst possible time to be reading API docs.
+        var twilioProblems = new List<string>();
+
+        if (string.IsNullOrWhiteSpace(twilioSettings.AccountSid))
+        {
+            twilioProblems.Add("Twilio:AccountSid is empty.");
+        }
+
+        if (string.IsNullOrWhiteSpace(twilioSettings.AuthToken))
+        {
+            twilioProblems.Add("Twilio:AuthToken is empty.");
+        }
+
+        // A Twilio WhatsApp sender must be "whatsapp:" + E.164, and must be a number Twilio owns —
+        // your own mobile is not a valid sender. The sandbox sender is whatsapp:+14155238886.
+        var from = twilioSettings.WhatsAppFromNumber ?? string.Empty;
+        if (!from.StartsWith("whatsapp:+", StringComparison.Ordinal))
+        {
+            twilioProblems.Add(
+                $"Twilio:WhatsAppFromNumber is '{from}', which is not a valid WhatsApp sender. It must be " +
+                "'whatsapp:' followed by an E.164 number including the country code — e.g. the sandbox " +
+                "sender 'whatsapp:+14155238886'. This is the number messages are sent FROM (owned by " +
+                "Twilio), not the recipient's number.");
+        }
+
+        if (twilioProblems.Count > 0)
+        {
+            throw new InvalidOperationException(
+                "Twilio:Enabled is true but the configuration is incomplete: "
+                + string.Join(" ", twilioProblems)
+                + " Supply values via environment variables (Twilio__AccountSid, Twilio__AuthToken) or "
+                + "user-secrets — never in appsettings.json, which is committed. "
+                + "See docs/TWILIO_WHATSAPP_SETUP.md.");
+        }
+
         builder.Services.AddHttpClient<ISmsProvider, TwilioWhatsAppSmsProvider>();
     }
     else
