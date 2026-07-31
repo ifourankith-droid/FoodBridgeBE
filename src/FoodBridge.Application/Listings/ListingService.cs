@@ -11,7 +11,10 @@ namespace FoodBridge.Application.Listings;
 public sealed class ListingService : IListingService
 {
     private const long MaxImageSizeBytes = 5 * 1024 * 1024;
-    private static readonly string[] AllowedImageExtensions = { ".jpg", ".jpeg", ".png" };
+    // Mirrors the frontend food-photo picker's accept list (JPG/PNG/WebP/AVIF).
+    // Kept in sync so a photo the browser lets the donor pick can't then be
+    // rejected here, which would save the listing but silently drop its photo.
+    private static readonly string[] AllowedImageExtensions = { ".jpg", ".jpeg", ".png", ".webp", ".avif" };
 
     /// <summary>Matches VolunteerListingService's default nearby-search radius, so a volunteer is pushed for exactly the listings they'd otherwise find via GET /api/listings/nearby with no radiusKm override.</summary>
     private const double NotifyVolunteersRadiusKm = 10;
@@ -182,6 +185,51 @@ public sealed class ListingService : IListingService
         return Result.Success(await listing.ToResponseAsync(images, timeline, _userRepository, cancellationToken));
     }
 
+    public async Task<Result<IReadOnlyList<ListingTimelineEventResponse>>> GetTimelineAsync(Guid listingId, CancellationToken cancellationToken = default)
+    {
+        // Not GetOwnedListingOrThrowAsync: the timeline is shared across parties, so we
+        // only assert the listing exists, not that the caller is its donor.
+        var listing = await _listingRepository.GetByIdAsync(listingId, cancellationToken);
+        if (listing is null)
+        {
+            throw new NotFoundException("Listing", listingId);
+        }
+
+        var events = await _listingRepository.GetTimelineAsync(listingId, cancellationToken);
+
+        // Resolve each actor's name, cached per user (events are few; no batch lookup exists).
+        var nameCache = new Dictionary<Guid, string?>();
+        async Task<string?> ResolveNameAsync(Guid? actorId)
+        {
+            if (actorId is null)
+            {
+                return null;
+            }
+            if (nameCache.TryGetValue(actorId.Value, out var cached))
+            {
+                return cached;
+            }
+            var actor = await _userRepository.GetByIdAsync(actorId.Value, cancellationToken);
+            nameCache[actorId.Value] = actor?.Name;
+            return actor?.Name;
+        }
+
+        var responses = new List<ListingTimelineEventResponse>(events.Count);
+        foreach (var e in events)
+        {
+            responses.Add(new ListingTimelineEventResponse(
+                e.FromStatus?.ToString(),
+                e.ToStatus.ToString(),
+                e.ActorUserId,
+                await ResolveNameAsync(e.ActorUserId),
+                e.Note,
+                e.PhotoUrl,
+                e.CreatedAtUtc));
+        }
+
+        return Result.Success<IReadOnlyList<ListingTimelineEventResponse>>(responses);
+    }
+
     public async Task<Result<ListingResponse>> UpdateAsync(Guid listingId, UpdateListingRequest request, CancellationToken cancellationToken = default)
     {
         var listing = await GetOwnedListingOrThrowAsync(listingId, cancellationToken);
@@ -248,7 +296,7 @@ public sealed class ListingService : IListingService
 
         if (!AllowedImageExtensions.Contains(fileExtension.ToLowerInvariant()))
         {
-            return Result.Failure<ListingImageUploadResponse>("Image must be a JPG or PNG file.");
+            return Result.Failure<ListingImageUploadResponse>("Image must be a JPG, PNG, WebP or AVIF file.");
         }
 
         var imageUrl = await _fileStorage.SaveAsync(fileContent, fileExtension.ToLowerInvariant(), cancellationToken);

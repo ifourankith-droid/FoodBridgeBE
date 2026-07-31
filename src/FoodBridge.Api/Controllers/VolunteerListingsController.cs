@@ -37,11 +37,27 @@ public sealed class VolunteerListingsController : BaseController
         [FromQuery] double? radiusKm,
         [FromQuery] string? dietType = null,
         [FromQuery] string? mealType = null,
+        [FromQuery] string? status = null,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 20,
         CancellationToken cancellationToken = default)
     {
-        var result = await _volunteerListingService.GetNearbyAsync(latitude, longitude, radiusKm, dietType, mealType, page, pageSize, cancellationToken);
+        var result = await _volunteerListingService.GetNearbyAsync(latitude, longitude, radiusKm, dietType, mealType, status, page, pageSize, cancellationToken);
+        return HandlePagedResult(result);
+    }
+
+    /// <summary>
+    /// The signed-in volunteer's claimed listings across every stage (Claimed → Confirmed),
+    /// most recently updated first — the data behind the My Deliveries page.
+    /// </summary>
+    [HttpGet("deliveries")]
+    [ProducesResponseType(typeof(PagedResponse<ListingResponse>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<PagedResponse<ListingResponse>>> GetMyDeliveries(
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 100,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _volunteerListingService.GetMyDeliveriesAsync(page, pageSize, cancellationToken);
         return HandlePagedResult(result);
     }
 

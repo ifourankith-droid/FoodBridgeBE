@@ -11,12 +11,14 @@ namespace FoodBridge.Application.DropOffLocations;
 public sealed class DropOffLocationService : IDropOffLocationService
 {
     private readonly IDropOffLocationRepository _dropOffLocationRepository;
+    private readonly IUserRepository _userRepository;
     private readonly IClock _clock;
     private readonly DropOffSettings _settings;
 
-    public DropOffLocationService(IDropOffLocationRepository dropOffLocationRepository, IClock clock, IOptions<DropOffSettings> settings)
+    public DropOffLocationService(IDropOffLocationRepository dropOffLocationRepository, IUserRepository userRepository, IClock clock, IOptions<DropOffSettings> settings)
     {
         _dropOffLocationRepository = dropOffLocationRepository;
+        _userRepository = userRepository;
         _clock = clock;
         _settings = settings.Value;
     }
@@ -54,8 +56,24 @@ public sealed class DropOffLocationService : IDropOffLocationService
             normalizedPageSize,
             cancellationToken);
 
+        // Resolve the adding volunteer's name for field-discovered spots (cached per user).
+        var names = new Dictionary<Guid, string?>();
+        foreach (var id in items
+            .Where(h => h.Location.CreatedByUserId.HasValue)
+            .Select(h => h.Location.CreatedByUserId!.Value)
+            .Distinct())
+        {
+            var user = await _userRepository.GetByIdAsync(id, cancellationToken);
+            names[id] = user?.Name;
+        }
+
+        var responses = items
+            .Select(h => h.ToResponse(
+                h.Location.CreatedByUserId is Guid cid && names.TryGetValue(cid, out var name) ? name : null))
+            .ToList();
+
         return Result.Success(new PagedResult<DropOffHotspotResponse>(
-            items.Select(h => h.ToResponse()).ToList(),
+            responses,
             totalCount,
             normalizedPage,
             normalizedPageSize));

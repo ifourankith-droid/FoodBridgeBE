@@ -26,4 +26,6 @@ public sealed record DropOffHotspotResponse(
     int TotalMeals,
     DateTime? LastDeliveredAtUtc,
     bool IsCoolingDown,
-    DateTime? CooldownUntilUtc);
+    DateTime? CooldownUntilUtc,
+    /// <summary>Name of the volunteer who added a field-discovered spot; null for admin-curated ones.</summary>
+    string? AddedByName);

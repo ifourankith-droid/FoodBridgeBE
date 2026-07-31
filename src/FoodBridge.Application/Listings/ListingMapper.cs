@@ -6,7 +6,7 @@ namespace FoodBridge.Application.Listings;
 
 public static class ListingMapper
 {
-    public static ListingNearbyResponse ToResponse(this NearbyListing listing) => new(
+    public static ListingNearbyResponse ToResponse(this NearbyListing listing, string? imageUrl = null) => new(
         listing.Id,
         listing.Title,
         listing.FoodType,
@@ -18,7 +18,8 @@ public static class ListingMapper
         listing.PickupAddress,
         listing.Latitude,
         listing.Longitude,
-        Math.Round(listing.DistanceMeters / 1000, 2));
+        Math.Round(listing.DistanceMeters / 1000, 2),
+        imageUrl);
 
     public static ListingAvailableNearbyResponse ToResponse(this AvailableNearbyListing listing) => new(
         listing.Id,

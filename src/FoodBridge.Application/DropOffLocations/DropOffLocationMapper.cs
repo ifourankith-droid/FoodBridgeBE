@@ -17,7 +17,7 @@ public static class DropOffLocationMapper
         location.Source.ToString(),
         location.CreatedAtUtc);
 
-    public static DropOffHotspotResponse ToResponse(this DropOffHotspot hotspot) => new(
+    public static DropOffHotspotResponse ToResponse(this DropOffHotspot hotspot, string? addedByName = null) => new(
         hotspot.Location.Id,
         hotspot.Location.Name,
         hotspot.Location.Address,
@@ -32,5 +32,6 @@ public static class DropOffLocationMapper
         hotspot.TotalMeals,
         hotspot.LastDeliveredAtUtc,
         hotspot.IsCoolingDown,
-        hotspot.CooldownUntilUtc);
+        hotspot.CooldownUntilUtc,
+        addedByName);
 }

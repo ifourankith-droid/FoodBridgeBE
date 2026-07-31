@@ -17,6 +17,12 @@ public interface IListingRepository
 
     Task<(IReadOnlyList<Listing> Items, int TotalCount)> GetByDonorAsync(Guid donorId, ListingStatus? status, DietType? dietType, MealType? mealType, int page, int pageSize, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// The listings a volunteer has claimed (VolunteerId = them), across every delivery
+    /// stage, most recently updated first. Backs the volunteer's My Deliveries feed.
+    /// </summary>
+    Task<(IReadOnlyList<Listing> Items, int TotalCount)> GetByVolunteerAsync(Guid volunteerId, ListingStatus? status, int page, int pageSize, CancellationToken cancellationToken = default);
+
     Task<IReadOnlyList<ListingImage>> GetImagesAsync(Guid listingId, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -57,7 +63,7 @@ public interface IListingRepository
     /// </summary>
     Task<bool> TryClaimAsync(Guid listingId, Guid volunteerId, DateTime? estimatedPickupAtUtc, ListingTimelineEvent claimEvent, Notification? donorNotification = null, CancellationToken cancellationToken = default);
 
-    Task<(IReadOnlyList<NearbyListing> Items, int TotalCount)> GetNearbyPendingAsync(decimal latitude, decimal longitude, double radiusMeters, DietType? dietType, MealType? mealType, int page, int pageSize, CancellationToken cancellationToken = default);
+    Task<(IReadOnlyList<NearbyListing> Items, int TotalCount)> GetNearbyPendingAsync(decimal latitude, decimal longitude, double radiusMeters, DietType? dietType, MealType? mealType, ListingStatus status, int page, int pageSize, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Donations a recipient could still receive — Pending or Claimed, deadline not passed,

@@ -80,6 +80,29 @@ VALUES (@UserId, @Type, @Title, @Body, @PayloadJson, @IsRead, @CreatedAtUtc, @Up
         return (items, totalCount);
     }
 
+    public async Task<(IReadOnlyList<Listing> Items, int TotalCount)> GetByVolunteerAsync(Guid volunteerId, ListingStatus? status, int page, int pageSize, CancellationToken cancellationToken = default)
+    {
+        using var connection = ConnectionFactory.CreateConnection();
+
+        // VolunteerId is set on claim and cleared on release, so a row that still
+        // carries it is necessarily one this volunteer is (or was) delivering —
+        // Claimed, PickedUp, Delivered or Confirmed. Most recently acted-on first.
+        const string whereSql = " WHERE VolunteerId = @VolunteerId AND IsDeleted = 0";
+        var statusFilterSql = status is null ? string.Empty : " AND Status = @Status";
+        var parameters = new { VolunteerId = volunteerId, Status = status, Offset = (page - 1) * pageSize, PageSize = pageSize };
+
+        var countCommand = new CommandDefinition("SELECT COUNT(*) FROM Listings" + whereSql + statusFilterSql, parameters, cancellationToken: cancellationToken);
+        var totalCount = await connection.ExecuteScalarAsync<int>(countCommand);
+
+        var itemsCommand = new CommandDefinition(
+            SelectSql + whereSql + statusFilterSql + " ORDER BY UpdatedAtUtc DESC OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY",
+            parameters,
+            cancellationToken: cancellationToken);
+        var items = (await connection.QueryAsync<Listing>(itemsCommand)).ToList();
+
+        return (items, totalCount);
+    }
+
     public async Task<IReadOnlyList<ListingImage>> GetImagesAsync(Guid listingId, CancellationToken cancellationToken = default)
     {
         using var connection = ConnectionFactory.CreateConnection();
@@ -280,15 +303,17 @@ VALUES (@UserId, @Type, @Title, @Body, @PayloadJson, @IsRead, @CreatedAtUtc, @Up
             return true;
         }, cancellationToken);
 
-    public async Task<(IReadOnlyList<NearbyListing> Items, int TotalCount)> GetNearbyPendingAsync(decimal latitude, decimal longitude, double radiusMeters, DietType? dietType, MealType? mealType, int page, int pageSize, CancellationToken cancellationToken = default)
+    public async Task<(IReadOnlyList<NearbyListing> Items, int TotalCount)> GetNearbyPendingAsync(decimal latitude, decimal longitude, double radiusMeters, DietType? dietType, MealType? mealType, ListingStatus status, int page, int pageSize, CancellationToken cancellationToken = default)
     {
         using var connection = ConnectionFactory.CreateConnection();
 
         var distanceSql = $"Location.STDistance({GeoHelper.PointFromLatLngFragment})";
         var dietFilterSql = dietType is null ? string.Empty : " AND DietType = @DietType";
         var mealFilterSql = mealType is null ? string.Empty : " AND MealType = @MealType";
+        // The deadline guard stays as defence-in-depth so an expired-but-not-yet-swept
+        // listing is never served, regardless of the status filter above it.
         var whereSql = $@"
-WHERE Status = @PendingStatus AND IsDeleted = 0 AND PickupDeadlineUtc > @NowUtc
+WHERE Status = @Status AND IsDeleted = 0 AND PickupDeadlineUtc > @NowUtc
     AND {distanceSql} <= @RadiusMeters{dietFilterSql}{mealFilterSql}";
 
         var parameters = new
@@ -296,7 +321,7 @@ WHERE Status = @PendingStatus AND IsDeleted = 0 AND PickupDeadlineUtc > @NowUtc
             Latitude = latitude,
             Longitude = longitude,
             RadiusMeters = radiusMeters,
-            PendingStatus = (byte)ListingStatus.Pending,
+            Status = (byte)status,
             NowUtc = DateTime.UtcNow,
             DietType = dietType,
             MealType = mealType,

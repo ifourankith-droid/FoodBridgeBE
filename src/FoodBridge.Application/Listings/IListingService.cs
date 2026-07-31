@@ -11,6 +11,13 @@ public interface IListingService
 
     Task<Result<ListingResponse>> GetByIdAsync(Guid listingId, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// The listing's lifecycle timeline — each status change with the actor's name, the
+    /// time, and any note / proof photo. Available to any party (donor / volunteer /
+    /// recipient), so both sections can render the same steps from one endpoint.
+    /// </summary>
+    Task<Result<IReadOnlyList<ListingTimelineEventResponse>>> GetTimelineAsync(Guid listingId, CancellationToken cancellationToken = default);
+
     /// <summary>Only permitted while the listing is Pending.</summary>
     Task<Result<ListingResponse>> UpdateAsync(Guid listingId, UpdateListingRequest request, CancellationToken cancellationToken = default);
 
