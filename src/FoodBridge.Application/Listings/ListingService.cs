@@ -166,7 +166,10 @@ public sealed class ListingService : IListingService
         var (normalizedPage, normalizedPageSize) = PaginationHelper.Normalize(page, pageSize);
         var (items, totalCount) = await _listingRepository.GetByDonorAsync(_currentUser.UserId, statusFilter, dietFilter, mealFilter, normalizedPage, normalizedPageSize, cancellationToken);
 
-        var summaries = items.Select(l => l.ToSummaryResponse()).ToList();
+        var imageUrls = await _listingRepository.GetPrimaryImageUrlsAsync(items.Select(i => i.Id).ToList(), cancellationToken);
+        var summaries = items
+            .Select(l => l.ToSummaryResponse(imageUrls.TryGetValue(l.Id, out var url) ? url : null))
+            .ToList();
         return Result.Success(new PagedResult<ListingSummaryResponse>(summaries, totalCount, normalizedPage, normalizedPageSize));
     }
 

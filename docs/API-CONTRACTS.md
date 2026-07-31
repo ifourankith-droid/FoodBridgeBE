@@ -301,10 +301,12 @@ Success (200) — `PagedResponse<ListingSummaryResponse>`:
   "page": 1, "pageSize": 20, "totalCount": 5, "totalPages": 1,
   "success": true, "message": "Success", "traceId": "...",
   "data": [
-    { "id": "...", "title": "Surplus Wedding Catering", "foodType": "Mixed Veg Meals", "dietType": "Veg", "mealType": "Dinner", "quantityMeals": 80, "freshnessTag": "JustCooked", "pickupDeadlineUtc": "...", "status": "Pending", "createdAtUtc": "..." }
+    { "id": "...", "title": "Surplus Wedding Catering", "foodType": "Mixed Veg Meals", "dietType": "Veg", "mealType": "Dinner", "quantityMeals": 80, "freshnessTag": "JustCooked", "pickupDeadlineUtc": "...", "status": "Pending", "createdAtUtc": "...", "imageUrl": "/uploads/....jpg" }
   ]
 }
 ```
+`imageUrl` is the listing's first uploaded photo (earliest by `CreatedAtUtc`), or `null` when it has none — a thumbnail for list rows without loading every image.
+
 422 — unrecognized `status` value (e.g. `?status=Bogus`).
 
 ### GET /api/listings/{id}

@@ -88,6 +88,30 @@ VALUES (@UserId, @Type, @Title, @Body, @PayloadJson, @IsRead, @CreatedAtUtc, @Up
         return (await connection.QueryAsync<ListingImage>(command)).ToList();
     }
 
+    public async Task<IReadOnlyDictionary<Guid, string>> GetPrimaryImageUrlsAsync(IReadOnlyList<Guid> listingIds, CancellationToken cancellationToken = default)
+    {
+        if (listingIds.Count == 0)
+        {
+            return new Dictionary<Guid, string>();
+        }
+
+        using var connection = ConnectionFactory.CreateConnection();
+        const string sql = @"
+SELECT ListingId, ImageUrl
+FROM (
+    SELECT ListingId, ImageUrl,
+           ROW_NUMBER() OVER (PARTITION BY ListingId ORDER BY CreatedAtUtc) AS rn
+    FROM ListingImages
+    WHERE ListingId IN @ListingIds
+) ranked
+WHERE ranked.rn = 1;";
+        var command = new CommandDefinition(sql, new { ListingIds = listingIds }, cancellationToken: cancellationToken);
+        var rows = await connection.QueryAsync<PrimaryImageRow>(command);
+        return rows.ToDictionary(r => r.ListingId, r => r.ImageUrl);
+    }
+
+    private sealed record PrimaryImageRow(Guid ListingId, string ImageUrl);
+
     public async Task<IReadOnlyList<ListingTimelineEvent>> GetTimelineAsync(Guid listingId, CancellationToken cancellationToken = default)
     {
         using var connection = ConnectionFactory.CreateConnection();

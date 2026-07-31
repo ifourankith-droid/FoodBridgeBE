@@ -84,7 +84,7 @@ public static class ListingMapper
             timeline.Select(t => new ListingTimelineEntryResponse(t.FromStatus?.ToString(), t.ToStatus.ToString(), t.ActorUserId, t.Note, t.PhotoUrl, t.CreatedAtUtc)).ToList());
     }
 
-    public static ListingSummaryResponse ToSummaryResponse(this Listing listing) => new(
+    public static ListingSummaryResponse ToSummaryResponse(this Listing listing, string? imageUrl = null) => new(
         listing.Id,
         listing.Title,
         listing.FoodType,
@@ -94,5 +94,6 @@ public static class ListingMapper
         listing.FreshnessTag.ToString(),
         listing.PickupDeadlineUtc,
         listing.Status.ToString(),
-        listing.CreatedAtUtc);
+        listing.CreatedAtUtc,
+        imageUrl);
 }

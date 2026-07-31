@@ -19,6 +19,13 @@ public interface IListingRepository
 
     Task<IReadOnlyList<ListingImage>> GetImagesAsync(Guid listingId, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// The first (earliest) image URL for each of the given listings, keyed by listing id —
+    /// used to put a thumbnail on list rows without loading every image. Listings with no
+    /// image are simply absent from the map.
+    /// </summary>
+    Task<IReadOnlyDictionary<Guid, string>> GetPrimaryImageUrlsAsync(IReadOnlyList<Guid> listingIds, CancellationToken cancellationToken = default);
+
     Task<IReadOnlyList<ListingTimelineEvent>> GetTimelineAsync(Guid listingId, CancellationToken cancellationToken = default);
 
     Task UpdateAsync(Listing listing, CancellationToken cancellationToken = default);

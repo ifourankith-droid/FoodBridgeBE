@@ -1,6 +1,6 @@
 namespace FoodBridge.Application.Listings.Dtos;
 
-/// <summary>Lightweight shape for list views — no images/timeline.</summary>
+/// <summary>Lightweight shape for list views — one thumbnail image, no timeline.</summary>
 public sealed record ListingSummaryResponse(
     Guid Id,
     string Title,
@@ -11,4 +11,5 @@ public sealed record ListingSummaryResponse(
     string FreshnessTag,
     DateTime PickupDeadlineUtc,
     string Status,
-    DateTime CreatedAtUtc);
+    DateTime CreatedAtUtc,
+    string? ImageUrl);
