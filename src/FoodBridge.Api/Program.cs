@@ -39,12 +39,24 @@ using Microsoft.OpenApi.Models;
 using QuestPDF.Infrastructure;
 using Serilog;
 
-Log.Logger = new LoggerConfiguration()
-    .ReadFrom.Configuration(new ConfigurationBuilder()
-        .SetBasePath(Directory.GetCurrentDirectory())
-        .AddJsonFile("appsettings.json")
-        .Build())
-    .CreateBootstrapLogger();
+// `optional: true`, and a Console fallback if reading config throws at all. This runs *before* the
+// try/catch below, so anything that fails here produces a completely silent crash — on Azure App
+// Service that surfaces as a bare HTTP 500.30 with nothing to read. A missing/unreadable
+// appsettings.json (e.g. an unexpected working directory) must not be what hides the real error.
+try
+{
+    Log.Logger = new LoggerConfiguration()
+        .ReadFrom.Configuration(new ConfigurationBuilder()
+            .SetBasePath(Directory.GetCurrentDirectory())
+            .AddJsonFile("appsettings.json", optional: true)
+            .Build())
+        .CreateBootstrapLogger();
+}
+catch (Exception ex)
+{
+    Console.Error.WriteLine($"[FoodBridge] Failed to initialise logging from appsettings.json: {ex}");
+    Log.Logger = new LoggerConfiguration().WriteTo.Console().CreateBootstrapLogger();
+}
 
 try
 {
@@ -336,6 +348,17 @@ try
 catch (Exception ex)
 {
     Log.Fatal(ex, "Application terminated unexpectedly");
+
+    // Also straight to stderr, unconditionally. Serilog's Production configuration writes only to a
+    // rolling *file*, on storage that App Service treats as ephemeral — so a startup crash would
+    // otherwise leave nothing in the Log Stream and the whole failure reads as a bare HTTP 500.30.
+    // stderr is captured by App Service (and by `docker logs` on Linux) regardless of sink config,
+    // which makes this the difference between a diagnosable failure and a mystery.
+    Console.Error.WriteLine("[FoodBridge] FATAL — the application failed to start:");
+    Console.Error.WriteLine(ex.ToString());
+
+    // Non-zero exit so the host reports a genuine failure rather than a clean shutdown.
+    Environment.ExitCode = 1;
 }
 finally
 {
