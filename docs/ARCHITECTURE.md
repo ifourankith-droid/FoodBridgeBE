@@ -133,6 +133,7 @@ A donor's saved address book — independent of `Users.Address` (one profile add
 | VolunteerId | uniqueidentifier FK → Users | nullable |
 | RecipientId | uniqueidentifier FK → Users | nullable |
 | EstimatedPickupAtUtc | datetime2 | nullable; volunteer's optional flexible-ETA commitment on claim, cleared on unclaim. Added in `M202607271002_AddEstimatedPickupAtUtcToListings` |
+| FoodSafetyAcceptedAtUtc | datetime2 | nullable; when the donor confirmed the food is safe and its quality is their responsibility. Set at creation from `IClock`, never updated. Null **only** for listings predating the requirement — never for one that skipped it. Added in `M202607311100_AddFoodSafetyAcceptanceToListings` |
 | RowVersion | rowversion | optimistic concurrency for claim |
 | IsDeleted | bit | soft delete |
 
@@ -786,6 +787,51 @@ Full runbook: **`docs/AZURE_DEPLOYMENT.md`**. Summary of what changed and why.
   a `BlobFileStorage` is one new class plus one `Program.cs` line; not built here because it wasn't in
   scope. Tracked in the Roadmap.
 
+### Phase 20 — Donor food-safety declaration
+
+Before a donation reaches any volunteer, the donor confirms the food is safe to eat and that its
+quality remains their responsibility.
+
+- **Enforced server-side, not just shown as a checkbox.** `CreateListingRequest.AcceptedFoodSafety`
+  must be `true` or the create is refused (400). A UI-only tick would be bypassed by calling
+  `POST /api/listings` directly, and the entire value of a liability declaration is that it was
+  actually given — an unenforced one is theatre. Omitting the field deserialises to `false`, so a
+  client written against the previous contract is **rejected rather than silently treated as having
+  agreed** — the safe direction for a default.
+- **Recorded per listing, not once per donor account** (`Listings.FoodSafetyAcceptedAtUtc`,
+  `M202607311100`). The declaration is about *this specific food*; a blanket agreement at sign-up
+  would say nothing about the meal a volunteer is collecting tonight. Exposed on `ListingResponse` so
+  the acknowledgement is auditable rather than write-only.
+- **The timestamp is stamped from `IClock`, never taken from the request.** The record of *when* the
+  donor agreed has to come from the server; the validator has already established *that* they did.
+- **Nullable column, deliberately not back-filled.** Listings created before this existed genuinely
+  have no declaration, and writing a timestamp onto them would fabricate an acknowledgement nobody
+  gave. Null therefore means "predates the requirement", never "skipped it" — which is the only
+  reading that keeps the field usable as evidence.
+- **Create only; editing does not re-ask.** `PUT /api/listings/{id}` is untouched and the timestamp
+  survives an edit (verified). A donor amending the quantity on a still-`Pending` listing already
+  declared this food safe when they posted it. *Arguable* the other way — an edit can change
+  `foodType` — but re-prompting on every field tweak would train donors to click through it, which is
+  worse for safety than asking once and meaning it.
+- **Wording is plain English, not legalese**, and lives in one component
+  (`features/donor/create-listing/food-safety-dialog.ts`): four concrete things the donor can check
+  about the food physically in front of them ("you'd be comfortable serving this to your own family"),
+  then one sentence on where responsibility sits. A restaurant manager posting leftovers at 11pm has
+  to be able to read it in seconds; a wall of clauses gets scrolled past, and a declaration nobody
+  reads protects nobody.
+- **The create request fires only from inside the dialog's confirm**, so there is no code path that
+  posts a donation without it — and the whole save (create → optional photo upload → navigate) runs
+  through it, so a failure keeps the dialog open with the declaration still ticked instead of dumping
+  the donor back to the form. `create-listing.ts`'s save tail was extracted into `save$()` to share
+  that behaviour with the edit path.
+- **No terms-version column, for now.** Only a timestamp is stored, so a materially reworded
+  declaration would leave older rows ambiguous about what was agreed. Acceptable while the wording is
+  fixed and the text lives in exactly one place; if it starts changing, add a version alongside the
+  timestamp. Noted in the Roadmap.
+- Verified live: create refused both when `acceptedFoodSafety` was omitted and when explicitly
+  `false`; accepted create returned `foodSafetyAcceptedAtUtc: 2026-07-31T10:28:28Z`, which survived a
+  re-read and an edit; pre-migration listings still list normally.
+
 ## Roadmap
 
 Deferred items, each already flagged inline where the tradeoff was made rather than discovered here for the first time:
@@ -801,6 +847,10 @@ Deferred items, each already flagged inline where the tradeoff was made rather t
   pins as fixed, and it needs a product answer first: does a volunteer already en route get
   penalised, notified only, or is cancellation refused past pickup? If it is added, pair it with
   the volunteer notification described in `ListingNotifications`.
+- **Versioning the food-safety declaration.** `Listings.FoodSafetyAcceptedAtUtc` records *when* a donor
+  agreed but not *what* they agreed to. Fine while the wording is fixed and lives in one component; if
+  the declaration is materially reworded, older rows become ambiguous as evidence. Add a
+  `FoodSafetyTermsVersion` alongside the timestamp at that point.
 - **Explicit "un-suspend" action.** `AdminService.VerifyAccountAsync` doubles as the only way to reverse a suspension today (any status → Verified, unconditionally). A dedicated `reinstate` endpoint with its own audit trail would be clearer if disputes/suspensions become frequent.
 - **`ITrackingStore`/`ITokenDenylist` are in-memory, single-instance only.** Both are `ConcurrentDictionary`-backed by design (ephemeral, high-frequency, not worth a DB write) but that means a multi-instance/load-balanced deployment would lose live tracking state and token revocations on failover. A Redis-backed implementation behind the same interfaces would be a drop-in swap.
 - **`IGeocodingProvider`/`MockGeocodingProvider` is a hardcoded Ahmedabad locality table**, not a real geocoding API. Swapping in Google Maps/Mapbox behind the existing interface needs zero consumer changes.

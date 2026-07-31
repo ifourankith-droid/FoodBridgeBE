@@ -233,11 +233,29 @@ try
     if (!builder.Environment.IsDevelopment()
         && (string.IsNullOrWhiteSpace(jwtSettings.Secret) || jwtSettings.Secret == CommittedDevSecret))
     {
+        // A near-miss on the variable *name* is the likeliest reason to land here — a single
+        // underscore ('Jwt_Secret') is not a nesting separator in .NET config, so it binds to
+        // nothing and looks identical to "never set it". Name the trap and show which environment
+        // variables actually arrived looking like an attempt, so the next person can self-diagnose
+        // instead of guessing. Names only — never values.
+        var lookalikes = Environment.GetEnvironmentVariables()
+            .Keys
+            .Cast<string>()
+            .Where(key => key.Contains("Jwt", StringComparison.OrdinalIgnoreCase)
+                && !key.Equals("Jwt__Secret", StringComparison.Ordinal))
+            .OrderBy(key => key, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var hint = lookalikes.Count > 0
+            ? $" Found these JWT-ish environment variables, none of which is the expected name: {string.Join(", ", lookalikes)}. Note the separator is a DOUBLE underscore."
+            : " No JWT-related environment variable was found at all.";
+
         throw new InvalidOperationException(
             $"Jwt:Secret is missing or is still the checked-in development value, and the current " +
             $"environment is '{builder.Environment.EnvironmentName}'. Supply a real secret (32+ random " +
-            "bytes, base64) as the environment variable 'Jwt__Secret' — in Azure App Service, add it " +
-            "under Settings > Environment variables > App settings. Never commit it.");
+            "bytes, base64) as the environment variable 'Jwt__Secret' (Jwt, two underscores, Secret) — " +
+            "in Azure App Service, add it under Settings > Environment variables > App settings. " +
+            "Never commit it." + hint);
     }
 
     // Only bound in Development, even if the "Otp" key ever leaked into a non-dev

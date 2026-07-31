@@ -89,6 +89,10 @@ public sealed class ListingService : IListingService
             Latitude = latitude,
             Longitude = longitude,
             Status = ListingStatus.Pending,
+            // Stamped server-side from IClock rather than taken from the request — the record of
+            // *when* the declaration was given must come from us, not from whatever a client claims.
+            // The validator has already established the donor said yes.
+            FoodSafetyAcceptedAtUtc = now,
             IsDeleted = false,
             CreatedAtUtc = now,
             UpdatedAtUtc = now,

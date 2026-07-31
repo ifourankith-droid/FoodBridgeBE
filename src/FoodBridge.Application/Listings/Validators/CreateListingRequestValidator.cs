@@ -29,6 +29,12 @@ public sealed class CreateListingRequestValidator : AbstractValidator<CreateList
             .WithMessage("Provide either donorAddressId or pickupAddress/latitude/longitude, not both.")
             .WithName("DonorAddressId");
 
+        // Wording is deliberately plain and non-legalistic: this message is what a donor sees if
+        // something goes wrong client-side, so it has to read like a sentence, not a clause.
+        RuleFor(x => x.AcceptedFoodSafety)
+            .Equal(true)
+            .WithMessage("Please confirm the food is safe to eat and that you take responsibility for its quality before posting this donation.");
+
         RuleFor(x => x.PickupAddress).MaximumLength(500);
         RuleFor(x => x.Latitude).InclusiveBetween(-90, 90).When(x => x.Latitude.HasValue);
         RuleFor(x => x.Longitude).InclusiveBetween(-180, 180).When(x => x.Longitude.HasValue);

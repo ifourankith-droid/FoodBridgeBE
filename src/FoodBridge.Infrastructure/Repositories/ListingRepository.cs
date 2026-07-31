@@ -11,7 +11,7 @@ namespace FoodBridge.Infrastructure.Repositories;
 public sealed class ListingRepository : BaseRepository, IListingRepository
 {
     private const string SelectSql = @"
-SELECT Id, DonorId, Title, FoodType, DietType, MealType, QuantityMeals, FreshnessTag, PreparedAtUtc, PickupDeadlineUtc, PickupAddress, Latitude, Longitude, Status, VolunteerId, RecipientId, EstimatedPickupAtUtc, IsDeleted, CreatedAtUtc, UpdatedAtUtc
+SELECT Id, DonorId, Title, FoodType, DietType, MealType, QuantityMeals, FreshnessTag, PreparedAtUtc, PickupDeadlineUtc, PickupAddress, Latitude, Longitude, Status, VolunteerId, RecipientId, EstimatedPickupAtUtc, FoodSafetyAcceptedAtUtc, IsDeleted, CreatedAtUtc, UpdatedAtUtc
 FROM Listings";
 
     public ListingRepository(IDbConnectionFactory connectionFactory) : base(connectionFactory)
@@ -22,11 +22,11 @@ FROM Listings";
         ExecuteInTransactionAsync(async (connection, transaction) =>
         {
             const string insertListingSql = @"
-INSERT INTO Listings (DonorId, Title, FoodType, DietType, MealType, QuantityMeals, FreshnessTag, PreparedAtUtc, PickupDeadlineUtc, PickupAddress, Latitude, Longitude, Location, Status, VolunteerId, RecipientId, IsDeleted, CreatedAtUtc, UpdatedAtUtc)
+INSERT INTO Listings (DonorId, Title, FoodType, DietType, MealType, QuantityMeals, FreshnessTag, PreparedAtUtc, PickupDeadlineUtc, PickupAddress, Latitude, Longitude, Location, Status, VolunteerId, RecipientId, FoodSafetyAcceptedAtUtc, IsDeleted, CreatedAtUtc, UpdatedAtUtc)
 OUTPUT INSERTED.Id
 VALUES (@DonorId, @Title, @FoodType, @DietType, @MealType, @QuantityMeals, @FreshnessTag, @PreparedAtUtc, @PickupDeadlineUtc, @PickupAddress, @Latitude, @Longitude,
         " + GeoHelper.PointFromLatLngFragment + @",
-        @Status, @VolunteerId, @RecipientId, @IsDeleted, @CreatedAtUtc, @UpdatedAtUtc);";
+        @Status, @VolunteerId, @RecipientId, @FoodSafetyAcceptedAtUtc, @IsDeleted, @CreatedAtUtc, @UpdatedAtUtc);";
 
             var listingId = await connection.ExecuteScalarAsync<Guid>(new CommandDefinition(insertListingSql, listing, transaction, cancellationToken: cancellationToken));
             listing.Id = listingId;

@@ -20,6 +20,11 @@ public sealed record ListingResponse(
     Guid? VolunteerId,
     Guid? RecipientId,
     DateTime? EstimatedPickupAtUtc,
+    /// <summary>
+    /// When the donor confirmed the food is safe and its quality is their responsibility. Null only
+    /// for listings created before that declaration was required.
+    /// </summary>
+    DateTime? FoodSafetyAcceptedAtUtc,
     string DonorName,
     string DonorMobile,
     string? VolunteerName,

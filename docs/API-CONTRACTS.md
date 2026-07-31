@@ -90,6 +90,8 @@ Request (Donor/Volunteer):
   "capacityMeals": null
 }
 ```
+> _(see also `POST /api/listings` below — it now requires `acceptedFoodSafety`.)_
+
 > **`role: "Recipient"` is currently refused** with 422 `"Recipient registration is currently unavailable. Please register as a Donor or a Volunteer."` — the platform runs on three roles (Donor, Volunteer, Admin) while `Features:RecipientRoleEnabled` is `false`. Accounts registered before the switch keep working normally. The Recipient request shape below is documented for when the flag is turned back on. See `docs/ARCHITECTURE.md` → Phase 15.
 
 Request (Recipient — `recipientType` and `capacityMeals` required):
@@ -277,9 +279,24 @@ Request (freeform address):
   "pickupDeadlineUtc": "2026-07-23T14:00:00Z",
   "pickupAddress": "C.G. Road, Navrangpura",
   "latitude": 23.0338,
-  "longitude": 72.5623
+  "longitude": 72.5623,
+  "acceptedFoodSafety": true
 }
 ```
+
+**`acceptedFoodSafety` is required and must be `true`.** It is the donor's confirmation that the food is safe to eat and that its quality remains their responsibility — collected in a dialog before the donation is posted, and shown to them as a short plain-English checklist rather than legalese.
+
+Enforced on the API, not just in the UI: the declaration is only meaningful if it was actually given for *this* donation, and a client-side-only checkbox is bypassed by calling this endpoint directly. **Omitting the field deserialises to `false` and is refused** — a caller written against the older contract is rejected rather than silently treated as having agreed:
+
+```json
+{
+  "success": false, "message": "One or more validation errors occurred.", "data": null,
+  "errors": ["AcceptedFoodSafety: Please confirm the food is safe to eat and that you take responsibility for its quality before posting this donation."],
+  "traceId": "..."
+}
+```
+
+On success the server stamps `foodSafetyAcceptedAtUtc` on the listing from `IClock` (never from the request) and returns it on `ListingResponse`. `PUT /api/listings/{id}` does **not** re-ask — the donor already declared this food safe when they posted it, and the timestamp is preserved through an edit.
 Request (saved address instead — same fields otherwise):
 ```json
 { "...": "same as above, minus pickupAddress/latitude/longitude", "donorAddressId": "..." }

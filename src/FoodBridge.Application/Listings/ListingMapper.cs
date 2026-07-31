@@ -72,6 +72,7 @@ public static class ListingMapper
             listing.VolunteerId,
             listing.RecipientId,
             listing.EstimatedPickupAtUtc,
+            listing.FoodSafetyAcceptedAtUtc,
             donor?.Name ?? string.Empty,
             donor?.Mobile ?? string.Empty,
             volunteer?.Name,
