@@ -13,18 +13,24 @@ public sealed class AdminService : IAdminService
     private readonly IAdminRepository _adminRepository;
     private readonly IUserRepository _userRepository;
     private readonly IUserDocumentRepository _userDocumentRepository;
+    private readonly INotificationDispatcher _notificationDispatcher;
     private readonly ICurrentUser _currentUser;
+    private readonly IClock _clock;
 
     public AdminService(
         IAdminRepository adminRepository,
         IUserRepository userRepository,
         IUserDocumentRepository userDocumentRepository,
-        ICurrentUser currentUser)
+        INotificationDispatcher notificationDispatcher,
+        ICurrentUser currentUser,
+        IClock clock)
     {
         _adminRepository = adminRepository;
         _userRepository = userRepository;
         _userDocumentRepository = userDocumentRepository;
+        _notificationDispatcher = notificationDispatcher;
         _currentUser = currentUser;
+        _clock = clock;
     }
 
     public async Task<Result<AdminDashboardResponse>> GetDashboardAsync(CancellationToken cancellationToken = default)
@@ -101,8 +107,26 @@ public sealed class AdminService : IAdminService
     public async Task<Result<AdminUserSummaryResponse>> VerifyAccountAsync(Guid userId, CancellationToken cancellationToken = default)
     {
         var user = await GetUserOrThrowAsync(userId, cancellationToken);
-        await _userRepository.UpdateAccountStatusAsync(userId, AccountStatus.Verified, cancellationToken);
+
+        // Verify is deliberately unconditional (it doubles as the only way to reverse a suspension),
+        // so re-verifying an already-Verified account is a legitimate no-op — and must not spam them
+        // with "you've been verified" every time an admin clicks it. A Suspended → Verified move does
+        // notify: being reinstated is exactly the kind of thing you want to hear about.
+        var previousStatus = user.AccountStatus;
+        var notification = previousStatus == AccountStatus.Verified
+            ? null
+            : AccountNotifications.Verified(userId, previousStatus, user.Role, _clock.UtcNow);
+
+        await _userRepository.UpdateAccountStatusAsync(userId, AccountStatus.Verified, notification, cancellationToken);
         user.AccountStatus = AccountStatus.Verified;
+
+        // Best-effort live push after the atomic write has committed — the same ordering every other
+        // notification in this app uses. GET /api/notifications is the fallback if nobody is connected.
+        if (notification is not null)
+        {
+            await _notificationDispatcher.DispatchAsync(notification, cancellationToken);
+        }
+
         return Result.Success(user.ToResponse());
     }
 
@@ -120,7 +144,9 @@ public sealed class AdminService : IAdminService
             return Result.Failure<AdminUserSummaryResponse>("You cannot suspend your own account.");
         }
 
-        await _userRepository.UpdateAccountStatusAsync(userId, AccountStatus.Suspended, cancellationToken);
+        // No notification on suspend — only verify was in scope. The plumbing is now here, so adding
+        // one is a two-line change if you want suspended users told why their claims stopped working.
+        await _userRepository.UpdateAccountStatusAsync(userId, AccountStatus.Suspended, cancellationToken: cancellationToken);
         user.AccountStatus = AccountStatus.Suspended;
         return Result.Success(user.ToResponse());
     }

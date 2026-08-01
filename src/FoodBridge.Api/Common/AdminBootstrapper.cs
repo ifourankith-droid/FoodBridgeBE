@@ -69,7 +69,7 @@ public static class AdminBootstrapper
             UpdatedAtUtc = now,
         };
 
-        admin.Id = await userRepository.CreateAsync(admin, cancellationToken);
+        admin.Id = await userRepository.CreateAsync(admin, cancellationToken: cancellationToken);
 
         // Logged at Information so the very first deployment leaves evidence of who was granted
         // admin, and when — this is the one account nobody reviewed.

@@ -159,7 +159,32 @@ public sealed class AuthService : IAuthService
             UpdatedAtUtc = now,
         };
 
-        user.Id = await _userRepository.CreateAsync(user, cancellationToken);
+        // A donor who typed an address at registration shouldn't have to type it again to post their
+        // first donation, so it's seeded into their address book as "Home" and marked default —
+        // `POST /api/listings` then accepts a donorAddressId straight away.
+        //
+        // Donors only: DonorAddresses is donor-scoped (the whole controller is DonorOnly), and no
+        // other role has an address book to seed. Coordinates are required because a saved address is
+        // useless for the nearby/geography queries without them — an address with no pin is skipped
+        // rather than stored half-formed.
+        var homeAddress = role == UserRole.Donor
+            && !string.IsNullOrWhiteSpace(request.Address)
+            && request.Latitude.HasValue
+            && request.Longitude.HasValue
+                ? new DonorAddress
+                {
+                    // DonorId is assigned by the repository once the user row exists.
+                    Label = "Home",
+                    Address = request.Address!.Trim(),
+                    Latitude = request.Latitude.Value,
+                    Longitude = request.Longitude.Value,
+                    IsDefault = true,
+                    CreatedAtUtc = now,
+                    UpdatedAtUtc = now,
+                }
+                : null;
+
+        user.Id = await _userRepository.CreateAsync(user, homeAddress, cancellationToken);
 
         var token = _jwtTokenGenerator.GenerateToken(user);
         return Result.Success(new AuthResponse(token, user.ToResponse()));
