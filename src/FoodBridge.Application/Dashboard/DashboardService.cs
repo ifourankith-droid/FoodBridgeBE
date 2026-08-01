@@ -3,6 +3,7 @@ using FoodBridge.Application.Common;
 using FoodBridge.Application.Dashboard.Dtos;
 using FoodBridge.Application.Listings;
 using FoodBridge.Application.Listings.Dtos;
+using FoodBridge.Domain.Enums;
 
 namespace FoodBridge.Application.Dashboard;
 
@@ -133,7 +134,7 @@ public sealed class DashboardService : IDashboardService
             return Array.Empty<ListingNearbyResponse>();
         }
 
-        var (items, _) = await _listingRepository.GetNearbyPendingAsync(lat.Value, lng.Value, NearbyRadiusKm * 1000, null, null, 1, NearbyLimit, cancellationToken);
+        var (items, _) = await _listingRepository.GetNearbyPendingAsync(lat.Value, lng.Value, NearbyRadiusKm * 1000, null, null, ListingStatus.Pending, 1, NearbyLimit, cancellationToken);
         return items.Select(i => i.ToResponse()).ToList();
     }
 

@@ -53,7 +53,7 @@ public sealed class VolunteerListingService : IVolunteerListingService
         _dropOffSettings = dropOffSettings.Value;
     }
 
-    public async Task<Result<PagedResult<ListingNearbyResponse>>> GetNearbyAsync(decimal latitude, decimal longitude, double? radiusKm, string? dietType, string? mealType, int page, int pageSize, CancellationToken cancellationToken = default)
+    public async Task<Result<PagedResult<ListingNearbyResponse>>> GetNearbyAsync(decimal latitude, decimal longitude, double? radiusKm, string? dietType, string? mealType, string? status, int page, int pageSize, CancellationToken cancellationToken = default)
     {
         if (latitude < -90 || latitude > 90)
         {
@@ -87,6 +87,11 @@ public sealed class VolunteerListingService : IVolunteerListingService
             mealFilter = parsedMeal;
         }
 
+        if (!TryResolveStatus(status, out var statusFilter))
+        {
+            return Result.Failure<PagedResult<ListingNearbyResponse>>($"Unknown status '{status}'.");
+        }
+
         var effectiveRadiusKm = radiusKm switch
         {
             null or <= 0 => DefaultRadiusKm,
@@ -95,11 +100,55 @@ public sealed class VolunteerListingService : IVolunteerListingService
         };
 
         var (normalizedPage, normalizedPageSize) = PaginationHelper.Normalize(page, pageSize);
-        var (items, totalCount) = await _listingRepository.GetNearbyPendingAsync(latitude, longitude, effectiveRadiusKm * 1000, dietFilter, mealFilter, normalizedPage, normalizedPageSize, cancellationToken);
+        var (items, totalCount) = await _listingRepository.GetNearbyPendingAsync(latitude, longitude, effectiveRadiusKm * 1000, dietFilter, mealFilter, statusFilter, normalizedPage, normalizedPageSize, cancellationToken);
 
-        var responses = items.Select(i => i.ToResponse()).ToList();
+        // Attach each listing's primary photo as a card thumbnail — same approach as the donor list.
+        var imageUrls = await _listingRepository.GetPrimaryImageUrlsAsync(items.Select(i => i.Id).ToList(), cancellationToken);
+        var responses = items
+            .Select(i => i.ToResponse(imageUrls.TryGetValue(i.Id, out var url) ? url : null))
+            .ToList();
 
         return Result.Success(new PagedResult<ListingNearbyResponse>(responses, totalCount, normalizedPage, normalizedPageSize));
+    }
+
+    public async Task<Result<PagedResult<ListingResponse>>> GetMyDeliveriesAsync(int page, int pageSize, CancellationToken cancellationToken = default)
+    {
+        var volunteerId = _currentUser.UserId;
+        var (normalizedPage, normalizedPageSize) = PaginationHelper.Normalize(page, pageSize);
+
+        var (items, totalCount) = await _listingRepository.GetByVolunteerAsync(volunteerId, null, normalizedPage, normalizedPageSize, cancellationToken);
+
+        // Full detail per row: the contacts, ETA and status, the food thumbnail (images),
+        // and the step-by-step lifecycle timeline. The timeline is included here so the
+        // My Deliveries detail view can render every step from this one response, without
+        // a follow-up call to GET /listings/{id}/timeline per delivery.
+        var responses = new List<ListingResponse>(items.Count);
+        foreach (var listing in items)
+        {
+            var images = await _listingRepository.GetImagesAsync(listing.Id, cancellationToken);
+            var timeline = await _listingRepository.GetTimelineAsync(listing.Id, cancellationToken);
+            responses.Add(await listing.ToResponseAsync(images, timeline, _userRepository, cancellationToken));
+        }
+
+        return Result.Success(new PagedResult<ListingResponse>(responses, totalCount, normalizedPage, normalizedPageSize));
+    }
+
+    /// <summary>
+    /// Resolves the nearby feed's status filter. Accepts the frontend's display label
+    /// "Posted" as an alias for <see cref="ListingStatus.Pending"/>, any real
+    /// <see cref="ListingStatus"/> name, and null/blank (→ Pending, the default feed).
+    /// Returns <c>false</c> for an unrecognised value so the caller can fail with a 422.
+    /// </summary>
+    private static bool TryResolveStatus(string? status, out ListingStatus resolved)
+    {
+        if (string.IsNullOrWhiteSpace(status)
+            || string.Equals(status, "Posted", StringComparison.OrdinalIgnoreCase))
+        {
+            resolved = ListingStatus.Pending;
+            return true;
+        }
+
+        return Enum.TryParse(status, ignoreCase: true, out resolved);
     }
 
     public async Task<Result<ListingResponse>> ClaimAsync(Guid listingId, DateTime? estimatedPickupAtUtc, CancellationToken cancellationToken = default)

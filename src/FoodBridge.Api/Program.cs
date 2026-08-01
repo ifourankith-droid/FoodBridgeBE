@@ -34,6 +34,7 @@ using FoodBridge.Infrastructure.Storage;
 using FoodBridge.Infrastructure.Tracking;
 using FoodBridge.Migrations;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using QuestPDF.Infrastructure;
@@ -402,7 +403,12 @@ try
     }
 
     app.UseHttpsRedirection();
-    app.UseStaticFiles();
+    // AVIF isn't in the default content-type map, so an uploaded .avif would save
+    // but serve as 404. Map it (WebP is already known) so every image extension the
+    // upload accepts is also servable.
+    var staticFileContentTypes = new FileExtensionContentTypeProvider();
+    staticFileContentTypes.Mappings[".avif"] = "image/avif";
+    app.UseStaticFiles(new StaticFileOptions { ContentTypeProvider = staticFileContentTypes });
     app.UseCors("AllowConfiguredOrigins");
     app.UseAuthentication();
     app.UseAuthorization();

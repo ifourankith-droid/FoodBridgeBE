@@ -12,4 +12,5 @@ public sealed record ListingNearbyResponse(
     string PickupAddress,
     decimal Latitude,
     decimal Longitude,
-    double DistanceKm);
+    double DistanceKm,
+    string? ImageUrl);

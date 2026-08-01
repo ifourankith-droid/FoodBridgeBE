@@ -5,7 +5,13 @@ namespace FoodBridge.Application.Listings;
 
 public interface IVolunteerListingService
 {
-    Task<Result<PagedResult<ListingNearbyResponse>>> GetNearbyAsync(decimal latitude, decimal longitude, double? radiusKm, string? dietType, string? mealType, int page, int pageSize, CancellationToken cancellationToken = default);
+    Task<Result<PagedResult<ListingNearbyResponse>>> GetNearbyAsync(decimal latitude, decimal longitude, double? radiusKm, string? dietType, string? mealType, string? status, int page, int pageSize, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The signed-in volunteer's claimed listings across every stage (Claimed → Confirmed),
+    /// most recently updated first — the data behind the My Deliveries page.
+    /// </summary>
+    Task<Result<PagedResult<ListingResponse>>> GetMyDeliveriesAsync(int page, int pageSize, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Pending → Claimed. Any available volunteer may claim; exactly one wins under a
