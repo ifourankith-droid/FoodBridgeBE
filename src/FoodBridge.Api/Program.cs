@@ -295,12 +295,34 @@ try
             "Never commit it." + hint);
     }
 
-    // Only bound in Development, even if the "Otp" key ever leaked into a non-dev
-    // config file — AuthService falls back to a random OTP whenever this section
-    // isn't registered, so a fixed OTP can never take effect outside local dev.
-    if (builder.Environment.IsDevelopment())
+    // A fixed OTP is honoured automatically in Development, and outside it ONLY when
+    // Otp:AllowFixedCodeOutsideDevelopment is explicitly true — for a live demo where reading codes
+    // out of a log stream isn't practical. When the section isn't registered at all, AuthService
+    // falls back to a random code, so an "Otp" key leaking into a non-dev config file still can't
+    // weaken anything on its own.
+    var otpSection = builder.Configuration.GetSection(OtpSettings.SectionName);
+    var otpSettings = otpSection.Get<OtpSettings>() ?? new OtpSettings();
+    var isDevelopment = builder.Environment.IsDevelopment();
+
+    if (isDevelopment || otpSettings.AllowFixedCodeOutsideDevelopment)
     {
-        builder.Services.Configure<OtpSettings>(builder.Configuration.GetSection(OtpSettings.SectionName));
+        builder.Services.Configure<OtpSettings>(otpSection);
+    }
+
+    // Logged every startup, at Warning so it survives Production's log levels: a fixed OTP outside
+    // Development means anyone who knows a registered mobile can sign in as that account, so it must
+    // never sit there forgotten after a demo.
+    if (!isDevelopment
+        && otpSettings.AllowFixedCodeOutsideDevelopment
+        && !string.IsNullOrWhiteSpace(otpSettings.FixedDevelopmentCode))
+    {
+        Log.Warning(
+            "SECURITY: a FIXED OTP is active in the '{Environment}' environment because " +
+            "Otp:AllowFixedCodeOutsideDevelopment is true. Every login accepts the same code, so anyone " +
+            "who knows a registered mobile number can sign in as that account. This is intended for a " +
+            "demo only — remove the Otp__AllowFixedCodeOutsideDevelopment and Otp__FixedDevelopmentCode " +
+            "settings to restore random codes.",
+            builder.Environment.EnvironmentName);
     }
 
     builder.Services
