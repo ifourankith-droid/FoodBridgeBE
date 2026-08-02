@@ -66,25 +66,27 @@ WHERE UserId = @UserId AND Type = @Type;";
         return (await connection.QueryAsync<UserDocument>(command)).ToList();
     }
 
-    public async Task<IReadOnlyDictionary<Guid, IReadOnlyList<UserDocumentType>>> GetTypesForUsersAsync(IReadOnlyCollection<Guid> userIds, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyDictionary<Guid, IReadOnlyList<UserDocumentRef>>> GetDocumentsForUsersAsync(IReadOnlyCollection<Guid> userIds, CancellationToken cancellationToken = default)
     {
         if (userIds.Count == 0)
         {
-            return new Dictionary<Guid, IReadOnlyList<UserDocumentType>>();
+            return new Dictionary<Guid, IReadOnlyList<UserDocumentRef>>();
         }
 
         using var connection = ConnectionFactory.CreateConnection();
         var command = new CommandDefinition(
-            "SELECT UserId, Type FROM UserDocuments WHERE UserId IN @UserIds;",
+            "SELECT UserId, Type, FileUrl FROM UserDocuments WHERE UserId IN @UserIds;",
             new { UserIds = userIds },
             cancellationToken: cancellationToken);
 
-        var rows = await connection.QueryAsync<(Guid UserId, byte Type)>(command);
+        var rows = await connection.QueryAsync<(Guid UserId, byte Type, string FileUrl)>(command);
 
         return rows
             .GroupBy(row => row.UserId)
             .ToDictionary(
                 group => group.Key,
-                group => (IReadOnlyList<UserDocumentType>)group.Select(row => (UserDocumentType)row.Type).ToList());
+                group => (IReadOnlyList<UserDocumentRef>)group
+                    .Select(row => new UserDocumentRef((UserDocumentType)row.Type, row.FileUrl))
+                    .ToList());
     }
 }

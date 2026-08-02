@@ -6,6 +6,10 @@ namespace FoodBridge.Application.Admin.Dtos;
 /// Pending, and everything required is in — the accounts the admin can actually act on. Lets the
 /// queue separate "waiting on me" from "waiting on them" without the client re-deriving the rule.
 /// </param>
+/// <param name="SelfieUrl">
+/// The user's submitted selfie URL, or null. Lets the queue show a face thumbnail in place of the
+/// initials avatar without a per-row fetch.
+/// </param>
 public sealed record AdminUserSummaryResponse(
     Guid Id,
     string Mobile,
@@ -17,4 +21,5 @@ public sealed record AdminUserSummaryResponse(
     DateTime CreatedAtUtc,
     IReadOnlyList<string> RequiredDocumentTypes,
     IReadOnlyList<string> SubmittedDocumentTypes,
-    bool IsReadyForReview);
+    bool IsReadyForReview,
+    string? SelfieUrl);

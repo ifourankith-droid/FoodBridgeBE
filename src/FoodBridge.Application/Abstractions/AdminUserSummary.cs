@@ -20,4 +20,11 @@ public sealed class AdminUserSummary
     /// N+1. Empty for roles that need no documents.
     /// </summary>
     public IReadOnlyList<UserDocumentType> SubmittedDocumentTypes { get; set; } = Array.Empty<UserDocumentType>();
+
+    /// <summary>
+    /// The user's submitted selfie URL, if any — set from the same batched query as
+    /// <see cref="SubmittedDocumentTypes"/> so the queue can show a face thumbnail without a per-row
+    /// fetch. Null when no selfie has been uploaded.
+    /// </summary>
+    public string? SelfieUrl { get; set; }
 }

@@ -14,11 +14,11 @@ public static class AdminMapper
 
     public static AdminUserSummaryResponse ToResponse(this User user) => Build(
         user.Id, user.Mobile, user.Name, user.Role, user.AccountStatus, user.City, user.IsAvailable, user.CreatedAtUtc,
-        Array.Empty<UserDocumentType>());
+        Array.Empty<UserDocumentType>(), selfieUrl: null);
 
     public static AdminUserSummaryResponse ToResponse(this AdminUserSummary summary) => Build(
         summary.Id, summary.Mobile, summary.Name, summary.Role, summary.AccountStatus, summary.City, summary.IsAvailable, summary.CreatedAtUtc,
-        summary.SubmittedDocumentTypes);
+        summary.SubmittedDocumentTypes, summary.SelfieUrl);
 
     /// <summary>
     /// Shared projection so both overloads derive `requiredDocumentTypes`/`isReadyForReview` from
@@ -34,7 +34,8 @@ public static class AdminMapper
         string? city,
         bool isAvailable,
         DateTime createdAtUtc,
-        IReadOnlyList<UserDocumentType> submitted)
+        IReadOnlyList<UserDocumentType> submitted,
+        string? selfieUrl)
     {
         var required = VerificationPolicy.RequiredDocuments(role);
         var isReadyForReview = accountStatus == AccountStatus.Pending
@@ -45,7 +46,8 @@ public static class AdminMapper
             id, mobile, name, role.ToString(), accountStatus.ToString(), city, isAvailable, createdAtUtc,
             required.Select(t => t.ToString()).ToList(),
             submitted.Select(t => t.ToString()).ToList(),
-            isReadyForReview);
+            isReadyForReview,
+            selfieUrl);
     }
 
     public static AdminListingSummaryResponse ToResponse(this AdminListingSummary summary) => new(

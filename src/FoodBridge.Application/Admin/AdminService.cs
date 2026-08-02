@@ -91,12 +91,13 @@ public sealed class AdminService : IAdminService
         var needsDocuments = items.Where(i => VerificationPolicy.RequiredDocuments(i.Role).Count > 0).Select(i => i.Id).ToList();
         if (needsDocuments.Count > 0)
         {
-            var submitted = await _userDocumentRepository.GetTypesForUsersAsync(needsDocuments, cancellationToken);
+            var submitted = await _userDocumentRepository.GetDocumentsForUsersAsync(needsDocuments, cancellationToken);
             foreach (var item in items)
             {
-                if (submitted.TryGetValue(item.Id, out var types))
+                if (submitted.TryGetValue(item.Id, out var docs))
                 {
-                    item.SubmittedDocumentTypes = types;
+                    item.SubmittedDocumentTypes = docs.Select(d => d.Type).ToList();
+                    item.SelfieUrl = docs.FirstOrDefault(d => d.Type == UserDocumentType.Selfie)?.FileUrl;
                 }
             }
         }

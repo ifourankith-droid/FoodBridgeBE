@@ -3,6 +3,9 @@ using FoodBridge.Domain.Enums;
 
 namespace FoodBridge.Application.Abstractions;
 
+/// <summary>One submitted document, reduced to what the accounts browse needs: its type and servable URL.</summary>
+public sealed record UserDocumentRef(UserDocumentType Type, string FileUrl);
+
 /// <summary>
 /// Verification documents. A narrow interface of its own rather than methods on
 /// <see cref="IUserRepository"/> — same ISP reasoning already applied to <c>IRecipientReader</c> and
@@ -19,9 +22,9 @@ public interface IUserDocumentRepository
     Task<IReadOnlyList<UserDocument>> GetForUserAsync(Guid userId, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Which of the given users have submitted which document types. Lets the admin accounts
-    /// browse show a "documents submitted" indicator for a whole page in one query instead of
-    /// one call per row.
+    /// Which of the given users have submitted which documents (type + URL). Lets the admin accounts
+    /// browse show a "documents submitted" indicator — and a selfie thumbnail — for a whole page in
+    /// one query instead of one call per row.
     /// </summary>
-    Task<IReadOnlyDictionary<Guid, IReadOnlyList<UserDocumentType>>> GetTypesForUsersAsync(IReadOnlyCollection<Guid> userIds, CancellationToken cancellationToken = default);
+    Task<IReadOnlyDictionary<Guid, IReadOnlyList<UserDocumentRef>>> GetDocumentsForUsersAsync(IReadOnlyCollection<Guid> userIds, CancellationToken cancellationToken = default);
 }
