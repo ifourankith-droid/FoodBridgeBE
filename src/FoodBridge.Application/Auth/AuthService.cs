@@ -11,10 +11,7 @@ namespace FoodBridge.Application.Auth;
 
 public sealed class AuthService : IAuthService
 {
-    private const int MaxSendsPerWindow = 3;
-    private static readonly TimeSpan SendWindow = TimeSpan.FromMinutes(15);
     private static readonly TimeSpan OtpValidity = TimeSpan.FromMinutes(5);
-    private const int MaxVerifyAttempts = 5;
 
     private readonly IUserRepository _userRepository;
     private readonly IDonorAddressRepository _donorAddressRepository;
@@ -25,6 +22,7 @@ public sealed class AuthService : IAuthService
     private readonly ITokenDenylist _tokenDenylist;
     private readonly IClock _clock;
     private readonly OtpSettings _otpSettings;
+    private readonly OtpRateLimitSettings _otpLimits;
     private readonly FeatureSettings _features;
 
     public AuthService(
@@ -37,6 +35,7 @@ public sealed class AuthService : IAuthService
         ITokenDenylist tokenDenylist,
         IClock clock,
         IOptions<OtpSettings> otpSettings,
+        IOptions<OtpRateLimitSettings> otpLimits,
         IOptions<FeatureSettings> features)
     {
         _userRepository = userRepository;
@@ -48,16 +47,24 @@ public sealed class AuthService : IAuthService
         _tokenDenylist = tokenDenylist;
         _clock = clock;
         _otpSettings = otpSettings.Value;
+        _otpLimits = otpLimits.Value;
         _features = features.Value;
     }
 
     public async Task<Result> SendOtpAsync(SendOtpRequest request, CancellationToken cancellationToken = default)
     {
         var now = _clock.UtcNow;
-        var sentCount = await _otpCodeRepository.CountSentSinceAsync(request.Mobile, now - SendWindow, cancellationToken);
-        if (sentCount >= MaxSendsPerWindow)
+
+        // Skipped entirely when the limit is off — no point paying for the COUNT query to ignore it.
+        if (_otpLimits.MaxSendsPerWindow > 0)
         {
-            throw new RateLimitExceededException("Too many OTP requests. Please try again later.");
+            var window = TimeSpan.FromMinutes(_otpLimits.WindowMinutes);
+            var sentCount = await _otpCodeRepository.CountSentSinceAsync(request.Mobile, now - window, cancellationToken);
+            if (sentCount >= _otpLimits.MaxSendsPerWindow)
+            {
+                throw new RateLimitExceededException(
+                    $"Too many OTP requests. Please try again in {_otpLimits.WindowMinutes} minutes.");
+            }
         }
 
         var code = string.IsNullOrWhiteSpace(_otpSettings.FixedDevelopmentCode)
@@ -88,7 +95,7 @@ public sealed class AuthService : IAuthService
             return Result.Failure<VerifyOtpResponse>("OTP not found or has expired.");
         }
 
-        if (otp.Attempts >= MaxVerifyAttempts)
+        if (_otpLimits.MaxVerifyAttempts > 0 && otp.Attempts >= _otpLimits.MaxVerifyAttempts)
         {
             return Result.Failure<VerifyOtpResponse>("Maximum verification attempts exceeded. Please request a new OTP.");
         }

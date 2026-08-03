@@ -330,6 +330,28 @@ try
             builder.Environment.EnvironmentName);
     }
 
+    // OTP abuse limits. Always bound, unlike the OtpSettings block above — how many codes a number may
+    // request must never depend on whether a demo code is active. Defaults reproduce the original
+    // hard-coded 3-per-15-minutes / 5-attempts, so configuring nothing keeps the protection.
+    var otpLimitSection = builder.Configuration.GetSection(OtpRateLimitSettings.SectionName);
+    builder.Services.Configure<OtpRateLimitSettings>(otpLimitSection);
+    var otpLimits = otpLimitSection.Get<OtpRateLimitSettings>() ?? new OtpRateLimitSettings();
+
+    // Warning, not Information, so it survives Production's log levels — a lifted OTP limit is an open
+    // door and must not sit there forgotten once the demo is over.
+    if (!isDevelopment && otpLimits.IsAnyLimitDisabled)
+    {
+        Log.Warning(
+            "SECURITY: OTP abuse limits are DISABLED in the '{Environment}' environment " +
+            "(OtpRateLimit:MaxSendsPerWindow={MaxSends}, OtpRateLimit:MaxVerifyAttempts={MaxAttempts}). " +
+            "A value of 0 or less switches that check off: sends are unlimited and/or codes can be " +
+            "guessed without bound. Intended for a demo only — remove the OtpRateLimit__* settings to " +
+            "restore the defaults (3 sends per 15 minutes, 5 attempts per code).",
+            builder.Environment.EnvironmentName,
+            otpLimits.MaxSendsPerWindow,
+            otpLimits.MaxVerifyAttempts);
+    }
+
     builder.Services
         .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         .AddJwtBearer(options =>
