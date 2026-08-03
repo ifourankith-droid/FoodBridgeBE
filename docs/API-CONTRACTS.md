@@ -153,7 +153,7 @@ Errors: 403 — neither self nor admin; 404 — no such user.
 ### POST /api/users/{id}/documents
 `[Authorize]`, **self only** — nobody, admin included, submits evidence on another person's behalf; the point is that it came from them.
 
-`multipart/form-data` with `file` (required) and `type` (required: `IdProof` or `Selfie`). Max 5MB; JPG/PNG/PDF — except a **`Selfie` must be an image**, since a PDF there would defeat comparing a face against the ID.
+`multipart/form-data` with `file` (required) and `type` (required: `IdProof` or `Selfie`). Max 5MB; any image `ImageFileTypes` allows (JPG — including the `.jfif`/`.jpe` aliases — PNG, WebP, AVIF, GIF, BMP) or a PDF — except a **`Selfie` must be an image**, since a PDF there would defeat comparing a face against the ID.
 
 **Re-uploading the same `type` replaces it** and deletes the superseded file, so a bad photo can simply be retaken rather than leaving the admin to guess which copy is current.
 
@@ -220,13 +220,13 @@ Request:
 Success (200): same shape as GET, with `isAvailable` updated.
 
 ### POST /api/users/{id}/avatar
-Self only. `multipart/form-data` with a `file` field. JPG/PNG only, 2MB max.
+Self only. `multipart/form-data` with a `file` field. Any image `ImageFileTypes` allows (JPG/JFIF, PNG, WebP, AVIF, GIF, BMP), 2MB max.
 
 Success (200):
 ```json
 { "success": true, "message": "Success", "traceId": "...", "data": { "avatarUrl": "/uploads/b13da59b-....jpg" } }
 ```
-The returned URL is directly servable (static files under `wwwroot/uploads`). Errors: 422 — `"Avatar must be 2MB or smaller."` / `"Avatar must be a JPG or PNG image."`; 400 if no file attached.
+The returned URL is directly servable (static files under `wwwroot/uploads`). Errors: 422 — `"Avatar must be 2MB or smaller."` / `"Avatar must be a JPG, PNG, WebP, AVIF, GIF or BMP image."`; 400 if no file attached.
 
 ## Donor Addresses
 All 5 endpoints route under `/api/donor-addresses` and require `[Authorize(Policy = "DonorOnly")]` — self only throughout, enforced in `DonorAddressService` via `ICurrentUser`. A donor's saved address book, independent of `Users.Address` (a single profile address) and `Listings.PickupAddress` (still freeform per listing) — lets a donor with multiple locations (e.g. restaurant branches) save each once and reuse it on `POST /api/listings` via `donorAddressId` instead of retyping it every time.
@@ -363,13 +363,13 @@ Cancels a listing (`Pending → Cancelled`) via `ListingStateMachine`. Owning do
 No request body. Success (200): same shape as `GET /api/listings/{id}` with `status: "Cancelled"` and a new timeline entry. 422 — any status other than `Pending` (e.g. cancelling an already-`Cancelled` listing → `"Cannot transition listing from 'Cancelled' to 'Cancelled'."`).
 
 ### POST /api/listings/{id}/images
-Uploads a photo of the food (JPG/PNG, max 5MB). Owning donor only, and only while `Status == Pending`. `multipart/form-data` with a `file` field.
+Uploads a photo of the food (any image `ImageFileTypes` allows — JPG/JFIF, PNG, WebP, AVIF, GIF, BMP — max 5MB). Owning donor only, and only while `Status == Pending`. `multipart/form-data` with a `file` field.
 
 Success (200):
 ```json
 { "success": true, "message": "Image uploaded successfully.", "data": { "imageId": "...", "imageUrl": "/uploads/....jpg" }, "errors": null, "traceId": "..." }
 ```
-The URL is directly servable (static files under `wwwroot/uploads`, same as avatars). Errors: 422 — `"Image must be 5MB or smaller."` / `"Image must be a JPG or PNG file."` / `"Images can only be added to pending listings."`; 400 — no file attached.
+The URL is directly servable (static files under `wwwroot/uploads`, same as avatars). Errors: 422 — `"Image must be 5MB or smaller."` / `"Image must be a JPG, PNG, WebP, AVIF, GIF or BMP image."` / `"Images can only be added to pending listings."`; 400 — no file attached.
 
 ## Listings — Volunteer
 All 5 endpoints route under `/api/listings` and require `[Authorize(Policy = "VolunteerOnly")]` — any non-Volunteer role gets 403. `unclaim`/`confirm-pickup`/`confirm-delivery` additionally check that the caller is the listing's assigned `VolunteerId` (403 otherwise, enforced in `VolunteerListingService`, not a policy).
@@ -420,7 +420,7 @@ Success (200): same shape as `claim`, with `status: "PickedUp"`, a new timeline 
 Errors: 403 — not the assigned volunteer; 422 — `photo` missing/wrong type/too large, or the listing isn't currently `Claimed` (`"Cannot transition listing from '{status}' to 'PickedUp'."`); 400 — no file attached.
 
 ### POST /api/listings/{id}/confirm-delivery
-Confirms delivery. Assigned volunteer only. `multipart/form-data` with a required `photo` field (JPG/PNG, max 5MB).
+Confirms delivery. Assigned volunteer only. `multipart/form-data` with a required `photo` field (any image `ImageFileTypes` allows, max 5MB).
 
 **Recording where the food went is required.** Send exactly one of:
 

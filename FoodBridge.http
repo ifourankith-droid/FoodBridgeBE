@@ -102,7 +102,7 @@ Content-Type: application/json
 }
 
 
-### Upload avatar (self only; JPG/PNG, max 2MB)
+### Upload avatar (self only; JPG/JFIF/PNG/WebP/AVIF/GIF/BMP, max 2MB)
 POST {{baseUrl}}/api/users/{{userId}}/avatar
 Authorization: Bearer PASTE_JWT_HERE
 Content-Type: multipart/form-data; boundary=FoodBridgeBoundary
@@ -246,7 +246,7 @@ POST {{baseUrl}}/api/listings/{{listingId}}/cancel
 Authorization: Bearer PASTE_DONOR_JWT_HERE
 
 
-### Upload a listing image (owner only; JPG/PNG, max 5MB; only while Pending)
+### Upload a listing image (owner only; JPG/JFIF/PNG/WebP/AVIF/GIF/BMP, max 5MB; only while Pending)
 POST {{baseUrl}}/api/listings/{{listingId}}/images
 Authorization: Bearer PASTE_DONOR_JWT_HERE
 Content-Type: multipart/form-data; boundary=FoodBridgeBoundary

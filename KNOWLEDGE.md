@@ -4,6 +4,43 @@ A running log of notable backend changes, the problem each solved, and where it 
 
 ---
 
+## One allowed-image-type list for every upload path
+
+**Done by me on 2026-08-03**
+
+### Problem
+Uploading a `.jfif` photo to a new listing failed. Each upload path carried its own
+hand-written extension array — `ListingService` allowed JPG/PNG/WebP/AVIF,
+`VolunteerListingService` and `UserService` only JPG/PNG — and none of them knew the
+JPEG aliases Windows produces. `.jfif` is what Chrome's "Save image as" writes, so
+users hit it constantly. Three copies of a rule is how they drifted apart in the
+first place; widening them in place would only have reset the clock.
+
+### Fix
+`src/FoodBridge.Application/Common/ImageFileTypes.cs` is now the single source of
+truth — `IsImage`, `IsImageOrPdf`, the wording for the rejection messages, and the
+content-type map. Every service and `Program.cs` reads it.
+
+- **`ImageFileTypes`** allows JPG (`.jpg .jpeg .jfif .jif .jpe .pjpeg .pjp`), PNG
+  (`.png .apng`), WebP, AVIF, GIF and BMP (`.bmp .dib`). **SVG is excluded on
+  purpose** — it's a scriptable XML document and we serve uploads back, so accepting
+  user SVGs is stored XSS. HEIC/TIFF are excluded because they upload fine and then
+  render as a broken image in most desktop browsers.
+- **`ListingService`** (listing image + self-delivery photo),
+  **`VolunteerListingService`** (pickup/delivery photos) and **`UserService`**
+  (avatar + verification documents) dropped their private arrays for
+  `ImageFileTypes`. A `Selfie` is still refused a PDF, now expressed as
+  `!IsImage(ext)` rather than `ext == ".pdf"`.
+- **`Program.cs`** feeds `ImageFileTypes.ExtraContentTypes` into the static-file
+  provider. This is not optional: the default map doesn't know `.jfif`/`.avif`, so an
+  extension we accept but can't serve would save the upload and then 404 the picture.
+
+Mirrored on the frontend by `IMAGE_ACCEPT` in
+`shared/ui/image-picker/image-picker.ts` — see `FoodBridgeFE/docs/KNOWLEDGE.md` for
+why that list carries extensions alongside MIME types.
+
+---
+
 ## My Deliveries API: include each delivery's lifecycle timeline
 
 **Done by me on 2026-08-01**

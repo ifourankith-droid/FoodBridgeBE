@@ -16,7 +16,6 @@ public sealed class VolunteerListingService : IVolunteerListingService
     private const double DefaultRadiusKm = 10;
     private const double MaxRadiusKm = 50;
     private const long MaxPhotoSizeBytes = 5 * 1024 * 1024;
-    private static readonly string[] AllowedPhotoExtensions = { ".jpg", ".jpeg", ".png" };
 
     private readonly IListingRepository _listingRepository;
     private readonly IUserRepository _userRepository;
@@ -490,9 +489,9 @@ public sealed class VolunteerListingService : IVolunteerListingService
             return "Photo must be 5MB or smaller.";
         }
 
-        if (!AllowedPhotoExtensions.Contains(photoExtension.ToLowerInvariant()))
+        if (!ImageFileTypes.IsImage(photoExtension))
         {
-            return "Photo must be a JPG or PNG file.";
+            return $"Photo must be {ImageFileTypes.ImageDescription}.";
         }
 
         return null;

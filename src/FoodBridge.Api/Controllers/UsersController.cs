@@ -69,7 +69,7 @@ public sealed class UsersController : BaseController
     }
 
     /// <summary>
-    /// Uploads an avatar (JPG/PNG, max 2MB). Self only.
+    /// Uploads an avatar (JPG/JFIF/PNG/WebP/AVIF/GIF/BMP, max 2MB). Self only.
     /// </summary>
     /// <summary>
     /// Verification status and submitted documents. Self or admin — the volunteer tracks their own

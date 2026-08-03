@@ -146,7 +146,7 @@ public sealed class ListingsController : BaseController
     }
 
     /// <summary>
-    /// Uploads a photo of the food for a listing (JPG/PNG/WebP/AVIF, max 5MB). Owning donor only;
+    /// Uploads a photo of the food for a listing (JPG/JFIF/PNG/WebP/AVIF/GIF/BMP, max 5MB). Owning donor only;
     /// only while the listing is Pending.
     /// </summary>
     [HttpPost("{id:guid}/images")]

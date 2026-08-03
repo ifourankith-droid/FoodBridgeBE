@@ -11,10 +11,6 @@ namespace FoodBridge.Application.Listings;
 public sealed class ListingService : IListingService
 {
     private const long MaxImageSizeBytes = 5 * 1024 * 1024;
-    // Mirrors the frontend food-photo picker's accept list (JPG/PNG/WebP/AVIF).
-    // Kept in sync so a photo the browser lets the donor pick can't then be
-    // rejected here, which would save the listing but silently drop its photo.
-    private static readonly string[] AllowedImageExtensions = { ".jpg", ".jpeg", ".png", ".webp", ".avif" };
 
     /// <summary>Matches VolunteerListingService's default nearby-search radius, so a volunteer is pushed for exactly the listings they'd otherwise find via GET /api/listings/nearby with no radiusKm override.</summary>
     private const double NotifyVolunteersRadiusKm = 10;
@@ -301,9 +297,9 @@ public sealed class ListingService : IListingService
             return Result.Failure<ListingImageUploadResponse>("Image must be 5MB or smaller.");
         }
 
-        if (!AllowedImageExtensions.Contains(fileExtension.ToLowerInvariant()))
+        if (!ImageFileTypes.IsImage(fileExtension))
         {
-            return Result.Failure<ListingImageUploadResponse>("Image must be a JPG, PNG, WebP or AVIF file.");
+            return Result.Failure<ListingImageUploadResponse>($"Image must be {ImageFileTypes.ImageDescription}.");
         }
 
         var imageUrl = await _fileStorage.SaveAsync(fileContent, fileExtension.ToLowerInvariant(), cancellationToken);
@@ -417,7 +413,7 @@ public sealed class ListingService : IListingService
             "Delivery recorded — thank you. Your certificate has been issued.");
     }
 
-    /// <summary>Same 5MB JPG/PNG rule the volunteer's pickup and delivery photos use.</summary>
+    /// <summary>Same 5MB image rule the volunteer's pickup and delivery photos use.</summary>
     private static string? ValidatePhoto(long photoSizeBytes, string photoExtension)
     {
         if (photoSizeBytes > MaxImageSizeBytes)
@@ -425,9 +421,9 @@ public sealed class ListingService : IListingService
             return "Photo must be 5MB or smaller.";
         }
 
-        return AllowedImageExtensions.Contains(photoExtension.ToLowerInvariant())
+        return ImageFileTypes.IsImage(photoExtension)
             ? null
-            : "Photo must be a JPG or PNG file.";
+            : $"Photo must be {ImageFileTypes.ImageDescription}.";
     }
 
     private async Task<Listing> GetOwnedListingOrThrowAsync(Guid listingId, CancellationToken cancellationToken)

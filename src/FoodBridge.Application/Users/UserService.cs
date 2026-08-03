@@ -10,14 +10,12 @@ namespace FoodBridge.Application.Users;
 public sealed class UserService : IUserService
 {
     private const long MaxAvatarSizeBytes = 2 * 1024 * 1024;
-    private static readonly string[] AllowedAvatarExtensions = { ".jpg", ".jpeg", ".png" };
 
     /// <summary>
     /// 5MB, and PDF allowed alongside images — a phone photo of an ID is bigger than an avatar,
     /// and a scanned ID is very often a PDF. Same ceiling as listing/delivery photos.
     /// </summary>
     private const long MaxDocumentSizeBytes = 5 * 1024 * 1024;
-    private static readonly string[] AllowedDocumentExtensions = { ".jpg", ".jpeg", ".png", ".pdf" };
 
     private readonly IUserRepository _userRepository;
     private readonly IUserDocumentRepository _userDocumentRepository;
@@ -69,16 +67,16 @@ public sealed class UserService : IUserService
         }
 
         var extension = fileExtension.ToLowerInvariant();
-        if (!AllowedDocumentExtensions.Contains(extension))
+        if (!ImageFileTypes.IsImageOrPdf(extension))
         {
-            return Result.Failure<UserVerificationResponse>("Document must be a JPG, PNG or PDF file.");
+            return Result.Failure<UserVerificationResponse>($"Document must be {ImageFileTypes.DocumentDescription}.");
         }
 
         // A selfie is the one piece of evidence that must actually be a photo — accepting a PDF
         // there would defeat the point of comparing a face against the ID.
-        if (parsedType == UserDocumentType.Selfie && extension == ".pdf")
+        if (parsedType == UserDocumentType.Selfie && !ImageFileTypes.IsImage(extension))
         {
-            return Result.Failure<UserVerificationResponse>("Your selfie must be a JPG or PNG photo.");
+            return Result.Failure<UserVerificationResponse>($"Your selfie must be {ImageFileTypes.ImageDescription}.");
         }
 
         var now = _clock.UtcNow;
@@ -187,9 +185,9 @@ public sealed class UserService : IUserService
             return Result.Failure<AvatarUploadResponse>("Avatar must be 2MB or smaller.");
         }
 
-        if (!AllowedAvatarExtensions.Contains(fileExtension.ToLowerInvariant()))
+        if (!ImageFileTypes.IsImage(fileExtension))
         {
-            return Result.Failure<AvatarUploadResponse>("Avatar must be a JPG or PNG image.");
+            return Result.Failure<AvatarUploadResponse>($"Avatar must be {ImageFileTypes.ImageDescription}.");
         }
 
         await GetUserOrThrowAsync(targetUserId, cancellationToken);

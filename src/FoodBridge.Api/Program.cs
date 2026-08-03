@@ -414,11 +414,14 @@ try
     }
 
     app.UseHttpsRedirection();
-    // AVIF isn't in the default content-type map, so an uploaded .avif would save
-    // but serve as 404. Map it (WebP is already known) so every image extension the
-    // upload accepts is also servable.
+    // The default content-type map doesn't know AVIF or the JPEG aliases (.jfif, .jpe),
+    // so an upload we accept would save and then serve as a 404. ImageFileTypes owns the
+    // list, which keeps "what may be uploaded" and "what can be served" the same set.
     var staticFileContentTypes = new FileExtensionContentTypeProvider();
-    staticFileContentTypes.Mappings[".avif"] = "image/avif";
+    foreach (var mapping in ImageFileTypes.ExtraContentTypes)
+    {
+        staticFileContentTypes.Mappings[mapping.Key] = mapping.Value;
+    }
     app.UseStaticFiles(new StaticFileOptions { ContentTypeProvider = staticFileContentTypes });
     app.UseCors("AllowConfiguredOrigins");
     app.UseAuthentication();
