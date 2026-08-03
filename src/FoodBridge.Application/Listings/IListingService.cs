@@ -25,4 +25,15 @@ public interface IListingService
 
     /// <summary>Only permitted while the listing is Pending.</summary>
     Task<Result<ListingImageUploadResponse>> UploadImageAsync(Guid listingId, Stream fileContent, string fileExtension, long fileSizeBytes, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The donor delivers their own still-unclaimed listing (Pending → Confirmed), taking it to a
+    /// drop-off point themselves rather than waiting for a volunteer who may never come.
+    /// <para>
+    /// Own listing only, and only while Pending — once a volunteer has claimed it, they are en route
+    /// and the donor must not complete it out from under them (409). Issues the donor's certificate
+    /// but no volunteer points, since no volunteer was involved.
+    /// </para>
+    /// </summary>
+    Task<Result<ListingResponse>> SelfDeliverAsync(Guid listingId, Stream photoContent, string photoExtension, long photoSizeBytes, DropOffChoice dropOff, CancellationToken cancellationToken = default);
 }

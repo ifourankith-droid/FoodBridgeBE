@@ -61,6 +61,28 @@ public static class ListingNotifications
     // cancel can never strand an assigned volunteer. Such a notification would be dead code.
     // If `Claimed → Cancelled` is ever added to the state machine, add the notification with it.
 
+    /// <summary>
+    /// To the donor: half the pickup window has gone and no volunteer has claimed it. Sent once, and
+    /// framed around the action available to them — they can still deliver it themselves rather than
+    /// watch perishable food run out the clock.
+    /// </summary>
+    public static Notification HalfwayUnclaimed(Guid donorId, string listingTitle, DateTime deadlineUtc, DateTime nowUtc)
+    {
+        var remaining = deadlineUtc - nowUtc;
+        // Hours read better than "0.7 hours" once it's under a couple of hours.
+        var remainingText = remaining.TotalHours >= 2
+            ? $"about {(int)Math.Round(remaining.TotalHours)} hours"
+            : $"about {Math.Max(1, (int)Math.Round(remaining.TotalMinutes))} minutes";
+
+        return For(
+            donorId,
+            "ListingHalfwayUnclaimed",
+            "Still waiting for a volunteer",
+            $"No one has claimed '{listingTitle}' yet, and {remainingText} of your pickup window is left. "
+            + "You can wait, or deliver it yourself to a nearby drop-off point.",
+            nowUtc);
+    }
+
     /// <summary>To the donor: nobody claimed it before the deadline.</summary>
     public static Notification Expired(Guid donorId, string listingTitle, DateTime nowUtc) =>
         For(

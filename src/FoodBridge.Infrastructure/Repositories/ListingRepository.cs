@@ -11,7 +11,7 @@ namespace FoodBridge.Infrastructure.Repositories;
 public sealed class ListingRepository : BaseRepository, IListingRepository
 {
     private const string SelectSql = @"
-SELECT Id, DonorId, Title, FoodType, DietType, MealType, QuantityMeals, FreshnessTag, PreparedAtUtc, PickupDeadlineUtc, PickupAddress, Latitude, Longitude, Status, VolunteerId, RecipientId, EstimatedPickupAtUtc, FoodSafetyAcceptedAtUtc, IsDeleted, CreatedAtUtc, UpdatedAtUtc
+SELECT Id, DonorId, Title, FoodType, DietType, MealType, QuantityMeals, FreshnessTag, PreparedAtUtc, PickupDeadlineUtc, PickupAddress, Latitude, Longitude, Status, VolunteerId, RecipientId, EstimatedPickupAtUtc, FoodSafetyAcceptedAtUtc, HalfwayNoticeSentAtUtc, IsDeleted, CreatedAtUtc, UpdatedAtUtc
 FROM Listings";
 
     public ListingRepository(IDbConnectionFactory connectionFactory) : base(connectionFactory)
@@ -22,11 +22,11 @@ FROM Listings";
         ExecuteInTransactionAsync(async (connection, transaction) =>
         {
             const string insertListingSql = @"
-INSERT INTO Listings (DonorId, Title, FoodType, DietType, MealType, QuantityMeals, FreshnessTag, PreparedAtUtc, PickupDeadlineUtc, PickupAddress, Latitude, Longitude, Location, Status, VolunteerId, RecipientId, FoodSafetyAcceptedAtUtc, IsDeleted, CreatedAtUtc, UpdatedAtUtc)
+INSERT INTO Listings (DonorId, Title, FoodType, DietType, MealType, QuantityMeals, FreshnessTag, PreparedAtUtc, PickupDeadlineUtc, PickupAddress, Latitude, Longitude, Location, Status, VolunteerId, RecipientId, FoodSafetyAcceptedAtUtc, HalfwayNoticeSentAtUtc, IsDeleted, CreatedAtUtc, UpdatedAtUtc)
 OUTPUT INSERTED.Id
 VALUES (@DonorId, @Title, @FoodType, @DietType, @MealType, @QuantityMeals, @FreshnessTag, @PreparedAtUtc, @PickupDeadlineUtc, @PickupAddress, @Latitude, @Longitude,
         " + GeoHelper.PointFromLatLngFragment + @",
-        @Status, @VolunteerId, @RecipientId, @FoodSafetyAcceptedAtUtc, @IsDeleted, @CreatedAtUtc, @UpdatedAtUtc);";
+        @Status, @VolunteerId, @RecipientId, @FoodSafetyAcceptedAtUtc, @HalfwayNoticeSentAtUtc, @IsDeleted, @CreatedAtUtc, @UpdatedAtUtc);";
 
             var listingId = await connection.ExecuteScalarAsync<Guid>(new CommandDefinition(insertListingSql, listing, transaction, cancellationToken: cancellationToken));
             listing.Id = listingId;
@@ -573,10 +573,108 @@ VALUES (@UserId, @Type, @Title, @Body, @PayloadJson, @IsRead, @CreatedAtUtc, @Up
             await WriteDropOffAsync(connection, transaction, dropOff, cancellationToken);
         }, cancellationToken);
 
+    public Task<bool> TrySelfDeliverAsync(Listing listing, ListingTimelineEvent timelineEvent, Certificate certificate, IReadOnlyList<Notification> notifications, DropOffRecord dropOff, CancellationToken cancellationToken = default) =>
+        ExecuteInTransactionAsync(async (connection, transaction) =>
+        {
+            // Conditional on Status = Pending, the same technique claim uses: exactly one of a
+            // concurrent claim and self-delivery wins, and the loser affects zero rows rather than
+            // clobbering an in-progress pickup. Status is its own version here.
+            const string updateSql = @"
+UPDATE Listings
+SET Status = @ConfirmedStatus, UpdatedAtUtc = @UpdatedAtUtc
+WHERE Id = @Id AND Status = @PendingStatus AND IsDeleted = 0;";
+
+            var rowsAffected = await connection.ExecuteAsync(new CommandDefinition(
+                updateSql,
+                new
+                {
+                    listing.Id,
+                    ConfirmedStatus = (byte)ListingStatus.Confirmed,
+                    PendingStatus = (byte)ListingStatus.Pending,
+                    UpdatedAtUtc = timelineEvent.CreatedAtUtc,
+                },
+                transaction,
+                cancellationToken: cancellationToken));
+
+            if (rowsAffected == 0)
+            {
+                return false;
+            }
+
+            const string insertTimelineSql = @"
+INSERT INTO ListingTimeline (ListingId, FromStatus, ToStatus, ActorUserId, Note, PhotoUrl, CreatedAtUtc)
+VALUES (@ListingId, @FromStatus, @ToStatus, @ActorUserId, @Note, @PhotoUrl, @CreatedAtUtc);";
+            await connection.ExecuteAsync(new CommandDefinition(insertTimelineSql, timelineEvent, transaction, cancellationToken: cancellationToken));
+
+            // Same per-month counter as ConfirmReceiptAsync, and the same accepted race documented
+            // there — two confirmations in the same millisecond of the same month could collide on
+            // the unique CertificateNumber.
+            var monthPrefix = $"FB-{timelineEvent.CreatedAtUtc:yyyyMM}-";
+            var countThisMonth = await connection.ExecuteScalarAsync<int>(new CommandDefinition(
+                "SELECT COUNT(*) FROM Certificates WHERE CertificateNumber LIKE @Prefix + '%';",
+                new { Prefix = monthPrefix },
+                transaction,
+                cancellationToken: cancellationToken));
+            certificate.CertificateNumber = SlugHelper.BuildCertificateNumber(timelineEvent.CreatedAtUtc, countThisMonth + 1);
+
+            const string insertCertificateSql = @"
+INSERT INTO Certificates (CertificateNumber, DonorId, ListingId, MealsCount, IssuedAtUtc, PdfUrl, CreatedAtUtc, UpdatedAtUtc)
+VALUES (@CertificateNumber, @DonorId, @ListingId, @MealsCount, @IssuedAtUtc, @PdfUrl, @CreatedAtUtc, @UpdatedAtUtc);";
+            await connection.ExecuteAsync(new CommandDefinition(insertCertificateSql, certificate, transaction, cancellationToken: cancellationToken));
+
+            // No VolunteerPoints insert: there is no volunteer. See the interface docs.
+
+            const string insertNotificationSql = @"
+INSERT INTO Notifications (UserId, Type, Title, Body, PayloadJson, IsRead, CreatedAtUtc, UpdatedAtUtc)
+OUTPUT INSERTED.Id
+VALUES (@UserId, @Type, @Title, @Body, @PayloadJson, @IsRead, @CreatedAtUtc, @UpdatedAtUtc);";
+            foreach (var notification in notifications)
+            {
+                notification.Id = await connection.ExecuteScalarAsync<Guid>(new CommandDefinition(insertNotificationSql, notification, transaction, cancellationToken: cancellationToken));
+            }
+
+            await WriteDropOffAsync(connection, transaction, dropOff, cancellationToken);
+            return true;
+        }, cancellationToken);
+
     public Task<ExpirySweepResult> ExpirePastDeadlineListingsAsync(DateTime nowUtc, CancellationToken cancellationToken = default) =>
         ExecuteInTransactionAsync(async (connection, transaction) =>
         {
             var notifications = new List<Notification>();
+
+            // Step 0: nudge donors whose listing is half-way through its pickup window with nobody
+            // coming, so they can deliver it themselves rather than watch it expire. Runs before the
+            // expiry steps below because a listing that is about to expire in this same sweep should
+            // get the expiry notice, not a "you still have time" one.
+            //
+            // The midpoint is computed in SQL from the row's own timestamps rather than passed in, so
+            // each listing is judged against its own window — a 2-hour window nudges at 1 hour, a
+            // 12-hour one at 6.
+            const string halfwaySql = @"
+UPDATE Listings
+SET HalfwayNoticeSentAtUtc = @NowUtc
+OUTPUT INSERTED.Id, INSERTED.DonorId, INSERTED.Title, INSERTED.PickupDeadlineUtc
+WHERE Status = @PendingStatus
+  AND IsDeleted = 0
+  AND HalfwayNoticeSentAtUtc IS NULL
+  AND PickupDeadlineUtc > @NowUtc
+  AND @NowUtc >= DATEADD(SECOND, DATEDIFF(SECOND, CreatedAtUtc, PickupDeadlineUtc) / 2, CreatedAtUtc);";
+
+            var halfway = (await connection.QueryAsync<SweepRow>(new CommandDefinition(
+                halfwaySql,
+                new { PendingStatus = (byte)ListingStatus.Pending, NowUtc = nowUtc },
+                transaction,
+                cancellationToken: cancellationToken))).ToList();
+
+            // The UPDATE stamps the column and returns the affected rows in one statement, so two
+            // concurrent sweeps can't both notify the same donor — the second matches nothing.
+            notifications.AddRange(halfway
+                .Where(row => row.DonorId.HasValue)
+                .Select(row => ListingNotifications.HalfwayUnclaimed(
+                    row.DonorId!.Value,
+                    row.Title,
+                    row.PickupDeadlineUtc ?? nowUtc,
+                    nowUtc)));
 
             // Step 1: a volunteer who claimed and never showed up must not leave perishable
             // food stuck forever — revert Claimed-past-deadline listings back to Pending.
@@ -688,5 +786,8 @@ VALUES (@UserId, @Type, @Title, @Body, @PayloadJson, @IsRead, @CreatedAtUtc, @Up
         public Guid? DonorId { get; init; }
         public Guid? VolunteerId { get; init; }
         public string Title { get; init; } = string.Empty;
+
+        /// <summary>Only selected by the halfway step, which needs it to say how long is left.</summary>
+        public DateTime? PickupDeadlineUtc { get; init; }
     }
 }

@@ -22,6 +22,7 @@ public sealed class VolunteerListingService : IVolunteerListingService
     private readonly IUserRepository _userRepository;
     private readonly IRecipientMatcher _recipientMatcher;
     private readonly IDropOffLocationRepository _dropOffLocationRepository;
+    private readonly IDropOffResolver _dropOffResolver;
     private readonly IFileStorage _fileStorage;
     private readonly INotificationDispatcher _notificationDispatcher;
     private readonly ICurrentUser _currentUser;
@@ -34,6 +35,7 @@ public sealed class VolunteerListingService : IVolunteerListingService
         IUserRepository userRepository,
         IRecipientMatcher recipientMatcher,
         IDropOffLocationRepository dropOffLocationRepository,
+        IDropOffResolver dropOffResolver,
         IFileStorage fileStorage,
         INotificationDispatcher notificationDispatcher,
         ICurrentUser currentUser,
@@ -45,6 +47,7 @@ public sealed class VolunteerListingService : IVolunteerListingService
         _userRepository = userRepository;
         _recipientMatcher = recipientMatcher;
         _dropOffLocationRepository = dropOffLocationRepository;
+        _dropOffResolver = dropOffResolver;
         _fileStorage = fileStorage;
         _notificationDispatcher = notificationDispatcher;
         _currentUser = currentUser;
@@ -359,7 +362,7 @@ public sealed class VolunteerListingService : IVolunteerListingService
 
         // Resolved before the photo is written to storage: a rejected drop-off choice would
         // otherwise leave an orphaned file behind for a request that failed anyway.
-        var dropOffResult = await ResolveDropOffAsync(listing, dropOff, now, cancellationToken);
+        var dropOffResult = await _dropOffResolver.ResolveAsync(listing, dropOff, _currentUser.UserId, now, cancellationToken);
         if (!dropOffResult.IsSuccess)
         {
             return Result.Failure<ListingResponse>(dropOffResult.Message);
@@ -429,80 +432,6 @@ public sealed class VolunteerListingService : IVolunteerListingService
     /// <see cref="Result{T}"/> (→ 422) for an ambiguous, incomplete, or unusable choice rather
     /// than throwing, matching how every other expected business failure is reported here.
     /// </summary>
-    private async Task<Result<DropOffRecord>> ResolveDropOffAsync(Listing listing, DropOffChoice dropOff, DateTime nowUtc, CancellationToken cancellationToken)
-    {
-        if (dropOff.IsExisting && (dropOff.Latitude.HasValue || dropOff.Longitude.HasValue || !string.IsNullOrWhiteSpace(dropOff.Name)))
-        {
-            return Result.Failure<DropOffRecord>("Provide either dropOffLocationId or a new location (latitude, longitude, locationName) — not both.");
-        }
-
-        var delivery = new DropOffDelivery
-        {
-            VolunteerId = _currentUser.UserId,
-            ListingId = listing.Id,
-            MealsCount = listing.QuantityMeals,
-            DeliveredAtUtc = nowUtc,
-            CreatedAtUtc = nowUtc,
-        };
-
-        if (dropOff.IsExisting)
-        {
-            var existing = await _dropOffLocationRepository.GetByIdAsync(dropOff.LocationId!.Value, cancellationToken);
-            if (existing is null)
-            {
-                return Result.Failure<DropOffRecord>("The selected drop-off location does not exist.");
-            }
-
-            if (!existing.IsActive)
-            {
-                return Result.Failure<DropOffRecord>("The selected drop-off location is no longer active. Please choose another.");
-            }
-
-            delivery.DropOffLocationId = existing.Id;
-            return Result.Success(new DropOffRecord(delivery));
-        }
-
-        // Not an existing location, so it has to be a complete new one. Report the specific
-        // missing piece rather than a blanket "invalid", since this is a form the volunteer fills.
-        if (!dropOff.Latitude.HasValue || !dropOff.Longitude.HasValue)
-        {
-            return Result.Failure<DropOffRecord>("Where did you drop it off? Provide dropOffLocationId, or latitude and longitude for a new location.");
-        }
-
-        if (string.IsNullOrWhiteSpace(dropOff.Name))
-        {
-            return Result.Failure<DropOffRecord>("A new drop-off location needs a name.");
-        }
-
-        if (dropOff.Latitude is < -90 or > 90)
-        {
-            return Result.Failure<DropOffRecord>("Latitude must be between -90 and 90.");
-        }
-
-        if (dropOff.Longitude is < -180 or > 180)
-        {
-            return Result.Failure<DropOffRecord>("Longitude must be between -180 and 180.");
-        }
-
-        var name = dropOff.Name!.Trim();
-        var newLocation = new DropOffLocation
-        {
-            Name = name,
-            // The address is optional for a field-discovered spot — often there isn't one, and
-            // the coordinates are the part that actually matters for routing.
-            Address = string.IsNullOrWhiteSpace(dropOff.Address) ? name : dropOff.Address!.Trim(),
-            Latitude = dropOff.Latitude.Value,
-            Longitude = dropOff.Longitude.Value,
-            City = null,
-            IsActive = true,
-            Source = DropOffLocationSource.Volunteer,
-            CreatedByUserId = _currentUser.UserId,
-            CreatedAtUtc = nowUtc,
-            UpdatedAtUtc = nowUtc,
-        };
-
-        return Result.Success(new DropOffRecord(delivery, newLocation));
-    }
 
     /// <summary>
     /// Refuses the action unless this volunteer has passed admin verification, returning the

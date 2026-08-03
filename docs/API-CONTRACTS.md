@@ -21,7 +21,7 @@ See `docs/ARCHITECTURE.md` § Data dictionary → Enum value tables (Role, Accou
 - [Certificates, Leaderboard, Reports](#certificates-leaderboard-reports) — certificate list/detail/pdf, leaderboard (+ my-rank), donor/volunteer/recipient reports
 - [Dashboard](#dashboard) — one consolidated per-role dashboard endpoint (Donor/Volunteer/Recipient)
 - [Admin](#admin) — dashboard, listings/accounts browse, verify/suspend, disputes (raise/list/resolve), platform report
-- [Drop-off Locations](#drop-off-locations) — admin CRUD for partner sites, plus the volunteer `hotspots` map (shared pool, cooldown-aware)
+- [Drop-off Locations](#drop-off-locations) — admin CRUD for partner sites, plus the `hotspots` map for whoever is delivering (shared pool, cooldown-aware)
 
 ## Auth
 All 5 endpoints route under `/api/auth`. None require a role policy; `logout` and `me` require any authenticated JWT (`[Authorize]`).
@@ -447,7 +447,7 @@ Errors: 403 — not the assigned volunteer; 422 — `photo` missing/wrong type/t
 > The previous `"Cannot confirm delivery before a recipient has been matched."` (422) no longer exists — an unmatched listing is now the completing path rather than an error.
 
 ### GET /api/dropoff-locations/hotspots
-`[Authorize(Policy = "VolunteerOnly")]` — the volunteer's map of where food has been delivered before, so they can see where demand concentrates. Admin and Donor get 403.
+`[Authorize(Policy = "CanDropOff")]` — **Volunteer or Donor**; Admin gets 403 (they have the full CRUD list instead). The map of where food has been delivered before, so whoever is carrying it can see where demand concentrates. Donors need it for [`POST /listings/{id}/self-deliver`](#post-apilistingsidself-deliver), which offers the identical list.
 
 Query params: `latitude`, `longitude` (required), `radiusKm` (optional; default `DropOff:HotspotRadiusKm` = 10, clamped to `MaxHotspotRadiusKm` = 50), `page`, `pageSize`.
 
@@ -834,11 +834,13 @@ Success (200):
 ```
 
 ## Drop-off Locations
-All 5 endpoints route under `/api/dropoff-locations`. **Authorization is per-action, not class-level**: the 4 CRUD endpoints below are `AdminOnly`, while [`GET /hotspots`](#get-apidropoff-locationshotspots) is `VolunteerOnly`.
+All 5 endpoints route under `/api/dropoff-locations`. **Authorization is per-action, not class-level**: the 4 CRUD endpoints below are `AdminOnly`, while [`GET /hotspots`](#get-apidropoff-locationshotspots) is `CanDropOff` (Volunteer **or** Donor).
 
 This is the **shared pool** of places food can be taken, and it grows two ways:
 - **Admins** curate partner collection points (NGO offices, shelters, community fridges) via `POST` below → `source: "Admin"`.
-- **Volunteers** add spots they find in the field by naming a new one at `confirm-delivery` → `source: "Volunteer"`, active immediately with no moderation step. Admins see these badged in the list and can retire one with `deactivate`.
+- **Whoever delivers** adds spots they find in the field by naming a new one at `confirm-delivery` (volunteer) or `self-deliver` (donor) → `source: "Volunteer"`, active immediately with no moderation step. Admins see these badged in the list and can retire one with `deactivate`.
+
+> `source: "Volunteer"` predates donor self-delivery and is kept for wire compatibility — read it as **"added during a delivery"**, not "added by a volunteer". `addedByName` on the hotspot response is who actually added it, and that is what the UI shows.
 
 The nearest **available** location (skipping anything on cooldown) is automatically resolved and attached to a listing's `suggestedDropOffLocation` when no recipient is available — see `confirm-pickup` and `reject`, above.
 

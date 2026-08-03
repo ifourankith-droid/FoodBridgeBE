@@ -118,6 +118,24 @@ public interface IListingRepository
     Task ConfirmReceiptAsync(Listing listing, ListingTimelineEvent timelineEvent, VolunteerPoint volunteerPoint, Certificate certificate, IReadOnlyList<Notification> notifications, DropOffRecord? dropOff = null, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Atomically completes an unclaimed listing the donor delivered themselves: a conditional
+    /// <c>UPDATE ... WHERE Status = Pending</c> to Confirmed, a timeline entry, a Certificate
+    /// (mutating <paramref name="certificate"/>.CertificateNumber), and the drop-off record.
+    /// <para>
+    /// Deliberately writes <b>no VolunteerPoints row</b> — no volunteer was involved, and
+    /// <c>VolunteerPoints.VolunteerId</c> is NOT NULL with a foreign key, so there is nothing valid to
+    /// put there. Awarding the donor volunteer points would also put them on the volunteer
+    /// leaderboard for a different job.
+    /// </para>
+    /// <para>
+    /// Returns false when the listing was no longer Pending — a volunteer claimed it in the moment
+    /// between the donor opening the dialog and confirming. The caller turns that into a 409 rather
+    /// than silently overwriting an in-progress delivery.
+    /// </para>
+    /// </summary>
+    Task<bool> TrySelfDeliverAsync(Listing listing, ListingTimelineEvent timelineEvent, Certificate certificate, IReadOnlyList<Notification> notifications, DropOffRecord dropOff, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Atomically, in one sweep: (1) reverts every Claimed listing whose PickupDeadlineUtc
     /// has passed back to Pending (clearing VolunteerId) — reuses the state machine's
     /// existing, already-legal Claimed→Pending transition, not a new one — so a volunteer

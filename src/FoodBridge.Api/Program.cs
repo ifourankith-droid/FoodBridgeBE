@@ -257,6 +257,10 @@ try
     builder.Services.AddScoped<IDropOffLocationRepository, DropOffLocationRepository>();
     builder.Services.AddScoped<IDropOffLocationService, DropOffLocationService>();
 
+    // Shared by the volunteer's confirm-delivery and the donor's self-deliver, so both validate a
+    // drop-off choice identically.
+    builder.Services.AddScoped<IDropOffResolver, DropOffResolver>();
+
     builder.Services.AddSingleton<IFileStorage>(_ => new LocalFileStorage(uploadsPath, "/uploads"));
 
     builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection(JwtSettings.SectionName));
@@ -380,6 +384,13 @@ try
         options.AddPolicy("VolunteerOnly", policy => policy.RequireRole(nameof(UserRole.Volunteer)));
         options.AddPolicy("RecipientOnly", policy => policy.RequireRole(nameof(UserRole.Recipient)));
         options.AddPolicy("AdminOnly", policy => policy.RequireRole(nameof(UserRole.Admin)));
+
+        // Anyone who can record a drop-off: volunteers on their deliveries, and donors delivering
+        // an unclaimed listing themselves. Both need the same "where should this go?" map, so the
+        // hotspot lookup can't stay VolunteerOnly.
+        options.AddPolicy("CanDropOff", policy => policy.RequireRole(
+            nameof(UserRole.Volunteer),
+            nameof(UserRole.Donor)));
     });
 
     builder.Services

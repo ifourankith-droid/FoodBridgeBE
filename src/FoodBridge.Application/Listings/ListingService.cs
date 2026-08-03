@@ -22,6 +22,7 @@ public sealed class ListingService : IListingService
     private readonly IListingRepository _listingRepository;
     private readonly IUserRepository _userRepository;
     private readonly IDonorAddressRepository _donorAddressRepository;
+    private readonly IDropOffResolver _dropOffResolver;
     private readonly IFileStorage _fileStorage;
     private readonly INotificationDispatcher _notificationDispatcher;
     private readonly ICurrentUser _currentUser;
@@ -31,6 +32,7 @@ public sealed class ListingService : IListingService
         IListingRepository listingRepository,
         IUserRepository userRepository,
         IDonorAddressRepository donorAddressRepository,
+        IDropOffResolver dropOffResolver,
         IFileStorage fileStorage,
         INotificationDispatcher notificationDispatcher,
         ICurrentUser currentUser,
@@ -39,6 +41,7 @@ public sealed class ListingService : IListingService
         _listingRepository = listingRepository;
         _userRepository = userRepository;
         _donorAddressRepository = donorAddressRepository;
+        _dropOffResolver = dropOffResolver;
         _fileStorage = fileStorage;
         _notificationDispatcher = notificationDispatcher;
         _currentUser = currentUser;
@@ -321,6 +324,110 @@ public sealed class ListingService : IListingService
         {
             throw new BusinessRuleException(message);
         }
+    }
+
+    public async Task<Result<ListingResponse>> SelfDeliverAsync(Guid listingId, Stream photoContent, string photoExtension, long photoSizeBytes, DropOffChoice dropOff, CancellationToken cancellationToken = default)
+    {
+        var listing = await GetOwnedListingOrThrowAsync(listingId, cancellationToken);
+
+        // Checked up front for a clear message; the write below re-checks conditionally, which is what
+        // actually settles a race with a volunteer claiming in the same moment.
+        if (listing.Status != ListingStatus.Pending)
+        {
+            throw new ConflictException(
+                $"You can only deliver a listing yourself while it is still unclaimed (current status: {listing.Status}).");
+        }
+
+        ListingStateMachine.EnsureCanTransition(listing.Status, ListingStatus.Confirmed);
+
+        var now = _clock.UtcNow;
+
+        // Resolved before the photo is stored so a rejected drop-off choice doesn't orphan a file —
+        // same ordering as the volunteer's confirm-delivery.
+        var dropOffResult = await _dropOffResolver.ResolveAsync(listing, dropOff, _currentUser.UserId, now, cancellationToken);
+        if (!dropOffResult.IsSuccess)
+        {
+            return Result.Failure<ListingResponse>(dropOffResult.Message);
+        }
+
+        var photoValidation = ValidatePhoto(photoSizeBytes, photoExtension);
+        if (photoValidation is not null)
+        {
+            return Result.Failure<ListingResponse>(photoValidation);
+        }
+
+        var photoUrl = await _fileStorage.SaveAsync(photoContent, photoExtension.ToLowerInvariant(), cancellationToken);
+
+        var timelineEvent = new ListingTimelineEvent
+        {
+            ListingId = listing.Id,
+            FromStatus = ListingStatus.Pending,
+            ToStatus = ListingStatus.Confirmed,
+            ActorUserId = _currentUser.UserId,
+            Note = "Delivered by the donor themselves — no volunteer claimed it.",
+            PhotoUrl = photoUrl,
+            CreatedAtUtc = now,
+        };
+
+        var certificate = new Certificate
+        {
+            DonorId = listing.DonorId,
+            ListingId = listing.Id,
+            MealsCount = listing.QuantityMeals,
+            IssuedAtUtc = now,
+            CreatedAtUtc = now,
+            UpdatedAtUtc = now,
+        };
+
+        // Not ListingCompletion.Build: that assembles a VolunteerPoint too and refuses a listing with
+        // no volunteer. Self-delivery is the one completion path with nobody to award points to.
+        var notifications = new List<Notification>
+        {
+            new()
+            {
+                UserId = listing.DonorId,
+                Type = "DonationConfirmed",
+                Title = "Donation complete",
+                Body = $"You delivered '{listing.Title}' yourself ({listing.QuantityMeals} meals). A certificate has been issued.",
+                IsRead = false,
+                CreatedAtUtc = now,
+                UpdatedAtUtc = now,
+            },
+        };
+
+        var delivered = await _listingRepository.TrySelfDeliverAsync(listing, timelineEvent, certificate, notifications, dropOffResult.Data!, cancellationToken);
+        if (!delivered)
+        {
+            throw new ConflictException("A volunteer claimed this listing just now, so it can no longer be self-delivered.");
+        }
+
+        listing.Status = ListingStatus.Confirmed;
+        listing.UpdatedAtUtc = now;
+
+        // Best-effort push after commit — the same ordering every other notification here uses.
+        foreach (var notification in notifications)
+        {
+            await _notificationDispatcher.DispatchAsync(notification, cancellationToken);
+        }
+
+        var images = await _listingRepository.GetImagesAsync(listingId, cancellationToken);
+        var timeline = await _listingRepository.GetTimelineAsync(listingId, cancellationToken);
+        return Result.Success(
+            await listing.ToResponseAsync(images, timeline, _userRepository, cancellationToken),
+            "Delivery recorded — thank you. Your certificate has been issued.");
+    }
+
+    /// <summary>Same 5MB JPG/PNG rule the volunteer's pickup and delivery photos use.</summary>
+    private static string? ValidatePhoto(long photoSizeBytes, string photoExtension)
+    {
+        if (photoSizeBytes > MaxImageSizeBytes)
+        {
+            return "Photo must be 5MB or smaller.";
+        }
+
+        return AllowedImageExtensions.Contains(photoExtension.ToLowerInvariant())
+            ? null
+            : "Photo must be a JPG or PNG file.";
     }
 
     private async Task<Listing> GetOwnedListingOrThrowAsync(Guid listingId, CancellationToken cancellationToken)

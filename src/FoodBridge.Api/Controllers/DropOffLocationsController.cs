@@ -13,8 +13,9 @@ namespace FoodBridge.Api.Controllers;
 /// recipient hotspots discovered by volunteers and saved at confirm-delivery.
 /// <para>
 /// Per-action authorization rather than one class-level policy — CRUD is Admin's, while
-/// <c>hotspots</c> is the volunteer's map of where to take what they're carrying. Same pattern
-/// <c>ReportsController</c>/<c>DisputesController</c> already use for exactly this reason.
+/// <c>hotspots</c> is the map of where to take food, for whoever is carrying it (volunteer or
+/// self-delivering donor). Same pattern <c>ReportsController</c>/<c>DisputesController</c> already
+/// use for exactly this reason.
 /// </para>
 /// </summary>
 [Authorize]
@@ -57,12 +58,16 @@ public sealed class DropOffLocationsController : BaseController
     }
 
     /// <summary>
-    /// Nearby drop-off spots for the volunteer's hotspot map, with usage intensity and cooldown
-    /// state. Ordered available-first then nearest, so the first row is where to take what they're
-    /// carrying. Spots on cooldown are still returned, flagged, so the map shows why a close spot
-    /// isn't being suggested rather than silently omitting it.
+    /// Nearby drop-off spots for the hotspot map, with usage intensity and cooldown state. Ordered
+    /// available-first then nearest, so the first row is where to take what they're carrying. Spots
+    /// on cooldown are still returned, flagged, so the map shows why a close spot isn't being
+    /// suggested rather than silently omitting it.
+    /// <para>
+    /// Open to donors as well as volunteers: a donor delivering their own unclaimed listing needs
+    /// the identical list to pick from. The data is a shared, non-personal pool of public places.
+    /// </para>
     /// </summary>
-    [Authorize(Policy = "VolunteerOnly")]
+    [Authorize(Policy = "CanDropOff")]
     [HttpGet("hotspots")]
     [ProducesResponseType(typeof(PagedResponse<DropOffHotspotResponse>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]

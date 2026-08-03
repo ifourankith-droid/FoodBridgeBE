@@ -29,6 +29,13 @@ public sealed class Listing
     /// </summary>
     public DateTime? FoodSafetyAcceptedAtUtc { get; set; }
 
+    /// <summary>
+    /// When the donor was warned that half the pickup window had elapsed with no volunteer, and
+    /// offered the option to deliver it themselves. Null means either not yet half-way, or the
+    /// listing left Pending before it got there.
+    /// </summary>
+    public DateTime? HalfwayNoticeSentAtUtc { get; set; }
+
     public bool IsDeleted { get; set; }
     public DateTime CreatedAtUtc { get; set; }
     public DateTime UpdatedAtUtc { get; set; }

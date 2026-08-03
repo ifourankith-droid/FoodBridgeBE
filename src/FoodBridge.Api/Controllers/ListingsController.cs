@@ -93,6 +93,48 @@ public sealed class ListingsController : BaseController
     /// <summary>
     /// Cancels a listing. Owning donor only; only while the listing is Pending (422 otherwise).
     /// </summary>
+    /// <summary>
+    /// Deliver your own still-unclaimed listing (Pending → Confirmed) rather than wait for a
+    /// volunteer. Own listing only. Issues the donor's certificate; awards no volunteer points,
+    /// because no volunteer was involved.
+    /// </summary>
+    /// <remarks>
+    /// <c>multipart/form-data</c>: a required <c>photo</c>, plus where it went — either
+    /// <c>dropOffLocationId</c> for an existing spot, or
+    /// <c>latitude</c>/<c>longitude</c>/<c>locationName</c> for a new one. Exactly one form, the same
+    /// contract as the volunteer's confirm-delivery. Returns 409 if a volunteer claims it first.
+    /// </remarks>
+    [HttpPost("{id:guid}/self-deliver")]
+    [Consumes("multipart/form-data")]
+    [RequestSizeLimit(5 * 1024 * 1024)]
+    [ProducesResponseType(typeof(ApiResponse<ListingResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<ApiResponse<ListingResponse>>> SelfDeliver(
+        Guid id,
+        IFormFile? photo,
+        [FromForm] Guid? dropOffLocationId,
+        [FromForm] decimal? latitude,
+        [FromForm] decimal? longitude,
+        [FromForm] string? locationName,
+        [FromForm] string? locationAddress,
+        CancellationToken cancellationToken)
+    {
+        if (photo is null || photo.Length == 0)
+        {
+            return BadRequest(ApiResponse<ListingResponse>.Fail("A delivery photo is required.", traceId: TraceId));
+        }
+
+        var dropOff = new DropOffChoice(dropOffLocationId, latitude, longitude, locationName, locationAddress);
+
+        var extension = Path.GetExtension(photo.FileName);
+        await using var stream = photo.OpenReadStream();
+        var result = await _listingService.SelfDeliverAsync(id, stream, extension, photo.Length, dropOff, cancellationToken);
+        return HandleResult(result);
+    }
+
     [HttpPost("{id:guid}/cancel")]
     [ProducesResponseType(typeof(ApiResponse<ListingResponse>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]

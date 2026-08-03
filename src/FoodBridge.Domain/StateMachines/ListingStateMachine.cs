@@ -19,7 +19,9 @@ public static class ListingStateMachine
 {
     private static readonly Dictionary<ListingStatus, ListingStatus[]> AllowedTransitions = new()
     {
-        [ListingStatus.Pending] = new[] { ListingStatus.Claimed, ListingStatus.Cancelled, ListingStatus.Expired },
+        // Pending → Confirmed is the donor delivering their own unclaimed food: no volunteer ever
+        // took it, so it skips Claimed/PickedUp/Delivered entirely rather than faking those steps.
+        [ListingStatus.Pending] = new[] { ListingStatus.Claimed, ListingStatus.Cancelled, ListingStatus.Expired, ListingStatus.Confirmed },
         [ListingStatus.Claimed] = new[] { ListingStatus.PickedUp, ListingStatus.Pending },
         [ListingStatus.PickedUp] = new[] { ListingStatus.Delivered, ListingStatus.Confirmed },
         [ListingStatus.Delivered] = new[] { ListingStatus.Confirmed },
