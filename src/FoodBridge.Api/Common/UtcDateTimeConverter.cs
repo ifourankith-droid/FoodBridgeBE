@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -68,7 +69,7 @@ public sealed class UtcDateTimeConverter : JsonConverter<DateTime>
         };
 
         // "O" on a Utc DateTime always ends in Z — the unambiguous form every client parses alike.
-        writer.WriteStringValue(utc.ToString("O", System.Globalization.CultureInfo.InvariantCulture));
+        writer.WriteStringValue(utc.ToString("O", CultureInfo.InvariantCulture));
     }
 }
 
