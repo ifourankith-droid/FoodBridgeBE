@@ -57,8 +57,12 @@ public sealed class CertificateService : ICertificateService
             certificate.CertificateNumber,
             donor.Name,
             listing.Title,
+            // The snapshot on the certificate, not the listing's current value — an edited listing must
+            // never change what an already-issued certificate says.
             certificate.MealsCount,
-            certificate.IssuedAtUtc));
+            certificate.IssuedAtUtc,
+            donor.City,
+            listing.FoodType));
 
         if (certificate.PdfUrl is null)
         {

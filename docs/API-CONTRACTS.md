@@ -680,6 +680,14 @@ Success (200) — `PagedResponse<CertificateResponse>`:
 
 Success (200): `Content-Type: application/pdf`, `Content-Disposition: attachment; filename=FoodBridge-Certificate-{id}.pdf`, PDF bytes as the body.
 
+**The document** is a single **landscape A4** page, laid out in `Infrastructure/Pdf/CertificateDocument` (the layout) and rendered by `QuestPdfCertificateGenerator` (the bytes): a double brand/gold frame, the FoodBridge wordmark, "Certificate of Appreciation", the donor's name inscribed over a rule with their city beneath, a citation naming the meal count, food type and listing title, then a three-cell band (meals rescued · date of issue · certificate number) above an embossed seal and signature block.
+
+Two things it deliberately does *not* do:
+- **No CO₂ or "equivalent" figure.** Meals is the only quantity the platform actually measures; a fabricated impact number on a document a donor may hand to an auditor is worse than a missing one.
+- **No claim of external verifiability.** The certificate number is printed as a reference, not as something a third party can look up — there is no public verification endpoint.
+
+The printed date is the issue timestamp **converted to IST**, not raw UTC: a certificate issued at 02:00 IST is 20:30 UTC the previous day, and printing the UTC date would date it a day early.
+
 ### GET /api/leaderboard
 `[Authorize]`, any role. Volunteers ranked by total `VolunteerPoints`, descending.
 
