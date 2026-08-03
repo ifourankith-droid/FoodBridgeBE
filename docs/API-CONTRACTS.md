@@ -83,6 +83,8 @@ Request (Donor/Volunteer):
   "role": "Volunteer",
   "name": "Test Volunteer",
   "city": "Ahmedabad",
+  "state": "Gujarat",
+  "pincode": "380015",
   "address": "Satellite, Ahmedabad",
   "latitude": 23.03,
   "longitude": 72.55,
@@ -90,6 +92,9 @@ Request (Donor/Volunteer):
   "capacityMeals": null
 }
 ```
+`state` and `pincode` are optional (both default to null if omitted). `pincode` must be exactly 6 digits when supplied — 400 otherwise. Both are **display-only**: every distance and nearby query runs off `latitude`/`longitude`.
+
+For a **Donor**, a supplied `address` + coordinates are also saved into their address book as a default `"Home"` entry, carrying `city`/`state`/`pincode` across, so their first donation needs no re-typing.
 > _(see also `POST /api/listings` below — it now requires `acceptedFoodSafety`.)_
 
 > **`role: "Recipient"` is currently refused** with 422 `"Recipient registration is currently unavailable. Please register as a Donor or a Volunteer."` — the platform runs on three roles (Donor, Volunteer, Admin) while `Features:RecipientRoleEnabled` is `false`. Accounts registered before the switch keep working normally. The Recipient request shape below is documented for when the flag is turned back on. See `docs/ARCHITECTURE.md` → Phase 15.
@@ -175,11 +180,35 @@ No request body. Success (200):
 
 Success (200):
 ```json
-{ "success": true, "message": "Success", "traceId": "...", "data": { "id": "...", "mobile": "9876543210", "name": "Test Volunteer", "role": "Volunteer", "city": "Ahmedabad", "accountStatus": "Verified", "recipientType": null, "avatarUrl": null } }
+{
+  "success": true, "message": "Success", "traceId": "...",
+  "data": {
+    "id": "...", "mobile": "9876543210", "name": "Test Volunteer", "role": "Volunteer",
+    "city": "Ahmedabad", "accountStatus": "Verified", "recipientType": null, "avatarUrl": null,
+    "address": {
+      "label": "Home", "address": "Satellite, Ahmedabad", "city": "Ahmedabad",
+      "state": "Gujarat", "pincode": "380015", "latitude": 23.03, "longitude": 72.55
+    }
+  }
+}
 ```
 401 if no/invalid/revoked token.
 
+**`address` is the complete postal address, or `null`** when the account has none. Which address it is depends on the role:
+
+| Role | Source | `label` |
+| --- | --- | --- |
+| Donor | Their **default saved address** (`GET /api/donor-addresses`, `isDefault` first) — the one a new donation would be posted from | The saved label, e.g. `"Home"` |
+| Volunteer / Admin | The account's own address on the user row (no address book exists for them) | `null` |
+| Donor with no saved addresses | Falls back to the account's own address | `null` |
+
+Registration seeds the two identically, so for a donor they only diverge once the address book is edited. Every part inside `address` is independently nullable — render what's present rather than assuming a shape.
+
+Top-level `city` is retained alongside it: it predates the block and always mirrors the user row, so it can differ from `address.city` when a donor's default address is in another city.
+
 `avatarUrl` (also present on `register`'s and `verify-otp`'s embedded `user`) mirrors `GET /api/users/{id}`'s field of the same name — populated once `POST /api/users/{id}/avatar` has been called at least once, `null` until then. Kept in sync so a client never needs a second call just to render the logged-in user's own avatar.
+
+> `register` and `verify-otp` embed the same `UserResponse`, but their `address` is always the account's own (label `null`) — the address book isn't queried on those paths, since a brand-new account has nothing but what it just sent.
 
 ## Users
 All 4 endpoints route under `/api/users` and require `[Authorize]` (any authenticated JWT). Authorization beyond that (self-or-admin, self-only, role restriction) is enforced in `UserService`, not via policy attributes, since it depends on the target resource, not just the caller's role.
@@ -193,12 +222,15 @@ Success (200):
   "success": true, "message": "Success", "traceId": "...",
   "data": {
     "id": "...", "mobile": "9999900003", "name": "Raj Patel", "role": "Volunteer",
-    "city": "Ahmedabad", "address": "Satellite", "latitude": 23.02, "longitude": 72.53,
+    "city": "Ahmedabad", "state": "Gujarat", "pincode": "380015",
+    "address": "Satellite", "latitude": 23.02, "longitude": 72.53,
     "recipientType": null, "capacityMeals": null, "isAvailable": true,
     "accountStatus": "Verified", "avatarUrl": null
   }
 }
 ```
+Unlike `/auth/me`, `address` here is the plain street string on the user row — this endpoint returns the account's own fields flat, never the address book.
+
 403 if requesting another user's profile without the Admin role.
 
 ### PUT /api/users/{id}
@@ -206,8 +238,12 @@ Self only (no Admin override). Updating `latitude`/`longitude` also recomputes t
 
 Request:
 ```json
-{ "name": "Raj Patel", "city": "Ahmedabad", "address": "New Address, Satellite", "latitude": 23.05, "longitude": 72.54, "capacityMeals": null }
+{ "name": "Raj Patel", "city": "Ahmedabad", "state": "Gujarat", "pincode": "380015", "address": "New Address, Satellite", "latitude": 23.05, "longitude": 72.54, "capacityMeals": null }
 ```
+`state` and `pincode` are optional; `pincode` must be 6 digits when supplied.
+
+> **This is a full replace, not a patch.** Any field omitted is written as null — so echo back the values you don't intend to change. Clients that update only coordinates (e.g. going online) must still send `city`/`state`/`pincode`/`address` or they will be erased.
+
 Success (200): same shape as GET. 403 if `id` isn't the caller's own.
 
 ### PATCH /api/users/{id}/availability
@@ -236,13 +272,27 @@ Saves a new address. Setting `isDefault: true` clears it on every other address 
 
 Request:
 ```json
-{ "label": "Main Branch", "address": "C.G. Road, Navrangpura", "latitude": 23.0338, "longitude": 72.5623, "isDefault": true }
+{
+  "label": "Main Branch", "address": "C.G. Road, Navrangpura",
+  "city": "Ahmedabad", "state": "Gujarat", "pincode": "380009",
+  "latitude": 23.0338, "longitude": 72.5623, "isDefault": true
+}
 ```
 Success (200):
 ```json
-{ "success": true, "message": "Address saved successfully.", "traceId": "...", "data": { "id": "...", "label": "Main Branch", "address": "C.G. Road, Navrangpura", "latitude": 23.0338, "longitude": 72.5623, "isDefault": true, "createdAtUtc": "...", "updatedAtUtc": "..." } }
+{
+  "success": true, "message": "Address saved successfully.", "traceId": "...",
+  "data": {
+    "id": "...", "label": "Main Branch", "address": "C.G. Road, Navrangpura",
+    "city": "Ahmedabad", "state": "Gujarat", "pincode": "380009",
+    "latitude": 23.0338, "longitude": 72.5623, "isDefault": true,
+    "createdAtUtc": "...", "updatedAtUtc": "..."
+  }
+}
 ```
-400 — validation (missing label/address, out-of-range lat/lng).
+`city`, `state` and `pincode` are optional and independent of the account's own — a branch can be in another city. Blank is stored as null. They are display-only: `POST /api/listings` still resolves the pickup point from the saved `latitude`/`longitude`.
+
+400 — validation (missing label/address, out-of-range lat/lng, `pincode` not exactly 6 digits).
 
 ### GET /api/donor-addresses
 Lists the caller's own saved addresses, default-first then newest-first. Query params: `page` (default 1), `pageSize` (default 20, max 100).
@@ -254,6 +304,8 @@ Self only. Success (200): a single `DonorAddressResponse`. 403 — belongs to a 
 
 ### PUT /api/donor-addresses/{id}
 Self only. Request: same shape as create. Success (200): the updated `DonorAddressResponse`. Errors: same as create, plus 403/404 as above.
+
+> **Full replace, not a patch** — an omitted `city`/`state`/`pincode` is written as null. Flipping `isDefault` on an existing address means re-sending its other fields, or they are erased.
 
 ### DELETE /api/donor-addresses/{id}
 Self only. Hard delete — `DonorAddresses` isn't one of the two tables (`Users`, `Listings`) CLAUDE.md's soft-delete convention covers, and nothing else references a saved address by id (listings that used one already copied its `pickupAddress`/`latitude`/`longitude` at creation time, so deleting the saved address afterward doesn't affect any existing listing).

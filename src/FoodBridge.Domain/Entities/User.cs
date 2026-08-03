@@ -9,6 +9,9 @@ public sealed class User
     public string Name { get; set; } = string.Empty;
     public UserRole Role { get; set; }
     public string? City { get; set; }
+    public string? State { get; set; }
+    /// <summary>Postal code, display-only — <c>Location</c> remains the authority for distance.</summary>
+    public string? Pincode { get; set; }
     public string? Address { get; set; }
     public decimal? Latitude { get; set; }
     public decimal? Longitude { get; set; }

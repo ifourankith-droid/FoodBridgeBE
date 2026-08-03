@@ -18,5 +18,7 @@ public static class UserProfileMapper
         user.CapacityMeals,
         user.IsAvailable,
         user.AccountStatus.ToString(),
-        user.AvatarUrl);
+        user.AvatarUrl,
+        user.State,
+        user.Pincode);
 }

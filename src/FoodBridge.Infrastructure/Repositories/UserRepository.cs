@@ -9,7 +9,7 @@ namespace FoodBridge.Infrastructure.Repositories;
 public sealed class UserRepository : BaseRepository, IUserRepository
 {
     private const string SelectSql = @"
-SELECT Id, Mobile, Name, Role, City, Address, Latitude, Longitude, RecipientType, CapacityMeals, IsAvailable, AccountStatus, AvatarUrl, IsDeleted, CreatedAtUtc, UpdatedAtUtc
+SELECT Id, Mobile, Name, Role, City, State, Pincode, Address, Latitude, Longitude, RecipientType, CapacityMeals, IsAvailable, AccountStatus, AvatarUrl, IsDeleted, CreatedAtUtc, UpdatedAtUtc
 FROM Users";
 
     public UserRepository(IDbConnectionFactory connectionFactory) : base(connectionFactory)
@@ -34,9 +34,9 @@ FROM Users";
         ExecuteInTransactionAsync(async (connection, transaction) =>
         {
             const string insertUserSql = @"
-INSERT INTO Users (Mobile, Name, Role, City, Address, Latitude, Longitude, Location, RecipientType, CapacityMeals, IsAvailable, AccountStatus, AvatarUrl, IsDeleted, CreatedAtUtc, UpdatedAtUtc)
+INSERT INTO Users (Mobile, Name, Role, City, State, Pincode, Address, Latitude, Longitude, Location, RecipientType, CapacityMeals, IsAvailable, AccountStatus, AvatarUrl, IsDeleted, CreatedAtUtc, UpdatedAtUtc)
 OUTPUT INSERTED.Id
-VALUES (@Mobile, @Name, @Role, @City, @Address, @Latitude, @Longitude,
+VALUES (@Mobile, @Name, @Role, @City, @State, @Pincode, @Address, @Latitude, @Longitude,
         CASE WHEN @Latitude IS NOT NULL AND @Longitude IS NOT NULL THEN geography::Point(@Latitude, @Longitude, 4326) ELSE NULL END,
         @RecipientType, @CapacityMeals, @IsAvailable, @AccountStatus, @AvatarUrl, @IsDeleted, @CreatedAtUtc, @UpdatedAtUtc);";
 
@@ -50,9 +50,9 @@ VALUES (@Mobile, @Name, @Role, @City, @Address, @Latitude, @Longitude,
                 homeAddress.DonorId = userId;
 
                 const string insertAddressSql = @"
-INSERT INTO DonorAddresses (DonorId, Label, Address, Latitude, Longitude, IsDefault, CreatedAtUtc, UpdatedAtUtc)
+INSERT INTO DonorAddresses (DonorId, Label, Address, City, State, Pincode, Latitude, Longitude, IsDefault, CreatedAtUtc, UpdatedAtUtc)
 OUTPUT INSERTED.Id
-VALUES (@DonorId, @Label, @Address, @Latitude, @Longitude, @IsDefault, @CreatedAtUtc, @UpdatedAtUtc);";
+VALUES (@DonorId, @Label, @Address, @City, @State, @Pincode, @Latitude, @Longitude, @IsDefault, @CreatedAtUtc, @UpdatedAtUtc);";
 
                 homeAddress.Id = await connection.ExecuteScalarAsync<Guid>(new CommandDefinition(insertAddressSql, homeAddress, transaction, cancellationToken: cancellationToken));
             }
@@ -66,6 +66,8 @@ VALUES (@DonorId, @Label, @Address, @Latitude, @Longitude, @IsDefault, @CreatedA
 UPDATE Users SET
     Name = @Name,
     City = @City,
+    State = @State,
+    Pincode = @Pincode,
     Address = @Address,
     Latitude = @Latitude,
     Longitude = @Longitude,

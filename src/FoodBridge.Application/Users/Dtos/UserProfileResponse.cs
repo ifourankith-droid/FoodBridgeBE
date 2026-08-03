@@ -13,4 +13,6 @@ public sealed record UserProfileResponse(
     int? CapacityMeals,
     bool IsAvailable,
     string AccountStatus,
-    string? AvatarUrl);
+    string? AvatarUrl,
+    string? State = null,
+    string? Pincode = null);

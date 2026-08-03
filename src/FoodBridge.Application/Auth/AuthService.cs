@@ -17,6 +17,7 @@ public sealed class AuthService : IAuthService
     private const int MaxVerifyAttempts = 5;
 
     private readonly IUserRepository _userRepository;
+    private readonly IDonorAddressRepository _donorAddressRepository;
     private readonly IOtpCodeRepository _otpCodeRepository;
     private readonly ISmsProvider _smsProvider;
     private readonly IJwtTokenGenerator _jwtTokenGenerator;
@@ -28,6 +29,7 @@ public sealed class AuthService : IAuthService
 
     public AuthService(
         IUserRepository userRepository,
+        IDonorAddressRepository donorAddressRepository,
         IOtpCodeRepository otpCodeRepository,
         ISmsProvider smsProvider,
         IJwtTokenGenerator jwtTokenGenerator,
@@ -38,6 +40,7 @@ public sealed class AuthService : IAuthService
         IOptions<FeatureSettings> features)
     {
         _userRepository = userRepository;
+        _donorAddressRepository = donorAddressRepository;
         _otpCodeRepository = otpCodeRepository;
         _smsProvider = smsProvider;
         _jwtTokenGenerator = jwtTokenGenerator;
@@ -145,6 +148,8 @@ public sealed class AuthService : IAuthService
             Name = request.Name,
             Role = role,
             City = request.City,
+            State = request.State,
+            Pincode = request.Pincode,
             Address = request.Address,
             Latitude = request.Latitude,
             Longitude = request.Longitude,
@@ -176,6 +181,9 @@ public sealed class AuthService : IAuthService
                     // DonorId is assigned by the repository once the user row exists.
                     Label = "Home",
                     Address = request.Address!.Trim(),
+                    City = request.City,
+                    State = request.State,
+                    Pincode = request.Pincode,
                     Latitude = request.Latitude.Value,
                     Longitude = request.Longitude.Value,
                     IsDefault = true,
@@ -204,6 +212,14 @@ public sealed class AuthService : IAuthService
             throw new NotFoundException("User", userId);
         }
 
-        return Result.Success(user.ToResponse());
+        // Donors get their default saved address rather than the Users row: it's the one they'd
+        // actually post a donation from, and the only one that carries a label. Registration seeds
+        // the two identically, so they only diverge once the donor edits their address book.
+        // Other roles have no address book, and `ToResponse` falls back to the Users row.
+        var defaultAddress = user.Role == UserRole.Donor
+            ? await _donorAddressRepository.GetDefaultAsync(userId, cancellationToken)
+            : null;
+
+        return Result.Success(user.ToResponse(defaultAddress));
     }
 }

@@ -10,4 +10,6 @@ public sealed record UpdateUserRequest(
     string? Address,
     decimal? Latitude,
     decimal? Longitude,
-    int? CapacityMeals);
+    int? CapacityMeals,
+    string? State = null,
+    string? Pincode = null);
