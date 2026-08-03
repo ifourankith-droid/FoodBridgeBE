@@ -6,6 +6,10 @@ namespace FoodBridge.Application.Auth.Dtos;
 /// <paramref name="RecipientType"/> ("Individual" or "Organization") is required
 /// when <paramref name="Role"/> is Recipient, ignored otherwise.
 /// </summary>
+/// <param name="State">Optional. Reverse-geocoding fills it from the picked pin.</param>
+/// <param name="Pincode">
+/// Optional, display-only — distance is always computed from the coordinates, never the pincode.
+/// </param>
 public sealed record RegisterRequest(
     string SessionToken,
     string Role,
@@ -15,4 +19,6 @@ public sealed record RegisterRequest(
     decimal? Latitude,
     decimal? Longitude,
     string? RecipientType,
-    int? CapacityMeals);
+    int? CapacityMeals,
+    string? State = null,
+    string? Pincode = null);

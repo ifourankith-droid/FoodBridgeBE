@@ -27,6 +27,9 @@ public sealed class DonorAddressService : IDonorAddressService
             DonorId = _currentUser.UserId,
             Label = request.Label,
             Address = request.Address,
+            City = Normalize(request.City),
+            State = Normalize(request.State),
+            Pincode = Normalize(request.Pincode),
             Latitude = request.Latitude,
             Longitude = request.Longitude,
             IsDefault = request.IsDefault,
@@ -63,6 +66,9 @@ public sealed class DonorAddressService : IDonorAddressService
 
         address.Label = request.Label;
         address.Address = request.Address;
+        address.City = Normalize(request.City);
+        address.State = Normalize(request.State);
+        address.Pincode = Normalize(request.Pincode);
         address.Latitude = request.Latitude;
         address.Longitude = request.Longitude;
         address.IsDefault = request.IsDefault;
@@ -84,6 +90,13 @@ public sealed class DonorAddressService : IDonorAddressService
         await _donorAddressRepository.DeleteAsync(addressId, cancellationToken);
         return Result.Success("Address deleted successfully.");
     }
+
+    /// <summary>
+    /// Blank → null, so an untouched optional input doesn't store an empty string that then has to be
+    /// special-cased everywhere a caller asks "does this address have a city?".
+    /// </summary>
+    private static string? Normalize(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     private async Task<DonorAddress> GetOwnedAddressOrThrowAsync(Guid addressId, CancellationToken cancellationToken)
     {

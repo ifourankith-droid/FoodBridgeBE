@@ -151,6 +151,8 @@ public sealed class UserService : IUserService
 
         user.Name = request.Name;
         user.City = request.City;
+        user.State = request.State;
+        user.Pincode = request.Pincode;
         user.Address = request.Address;
         user.Latitude = request.Latitude;
         user.Longitude = request.Longitude;

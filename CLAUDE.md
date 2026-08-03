@@ -111,7 +111,25 @@ Azure runbook: **`docs/AZURE_DEPLOYMENT.md`**. Production uses Azure SQL with En
   needed because seeds are Development-only and Admin can't self-register.
 - `Database:MigrateOnStartup` is `false` in Production; run `dotnet run --project src/FoodBridge.Migrations -- "<conn>"` once.
 
+## Timestamps on the wire
+Every `…Utc` field is serialised as an explicit UTC instant ending in `Z`, via
+`Api/Common/UtcDateTimeConverter` registered globally on both MVC and SignalR. **Don't stamp
+`DateTimeKind` in individual mappers** — the converter is the one place that handles it.
+- Dapper returns `datetime2` as `DateTimeKind.Unspecified`, and System.Text.Json writes those with
+  **no suffix**. A suffix-less date-time is parsed as *local* time by browsers, so IST clients read
+  every instant 5½ hours early and near-future pickup deadlines showed as already expired. Reads were
+  affected but not writes, which is why create responses looked correct and list/detail did not.
+- On read, both `AssumeUniversal` and `AdjustToUniversal` are applied: a bare value is taken as UTC,
+  an offset-tagged one is converted. Never use the reader's `TryGetDateTimeOffset` for this — for a
+  bare value it succeeds by applying the *server's* offset, making the result host-dependent.
+
 ## Active configuration
+- **`OtpRateLimit:MaxSendsPerWindow`** / **`WindowMinutes`** / **`MaxVerifyAttempts`** (defaults
+  `3` / `15` / `5`) — OTP abuse limits, keyed on the mobile number. **Setting any of them to `0`
+  disables that check**; `Program.cs` logs a Warning on every startup while one is off outside
+  Development. Its own section, deliberately **not** part of `Otp:` — that section is only bound when
+  the fixed-code gate is open, and abuse limits must never depend on a demo code being active.
+  Currently `0`/`0` on Azure for the demo.
 - **`DropOff:CooldownHours`** (default `5`) — after a drop-off, that spot is hidden from the
   nearest-spot suggestion for this long, and flagged `isCoolingDown` on the volunteer hotspot map.
   **Global, not per-volunteer**: the place itself has just been served. Also

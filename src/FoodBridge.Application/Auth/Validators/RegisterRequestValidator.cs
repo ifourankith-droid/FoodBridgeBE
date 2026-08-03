@@ -1,5 +1,6 @@
 using FluentValidation;
 using FoodBridge.Application.Auth.Dtos;
+using FoodBridge.Application.Common;
 using FoodBridge.Domain.Enums;
 
 namespace FoodBridge.Application.Auth.Validators;
@@ -24,7 +25,9 @@ public sealed class RegisterRequestValidator : AbstractValidator<RegisterRequest
 
         RuleFor(x => x.Name).NotEmpty().MaximumLength(200);
 
-        RuleFor(x => x.City).MaximumLength(100);
+        RuleFor(x => x.City).MaximumLength(PostalRules.CityMaxLength);
+        RuleFor(x => x.State).MaximumLength(PostalRules.StateMaxLength);
+        RuleFor(x => x.Pincode).ValidPincode();
         RuleFor(x => x.Address).MaximumLength(500);
 
         RuleFor(x => x.CapacityMeals)
