@@ -82,8 +82,27 @@ try
         .ReadFrom.Services(services)
         .Enrich.FromLogContext());
 
-    builder.Services.AddControllers();
-    builder.Services.AddSignalR();
+    // Every timestamp crossing the wire is UTC and must say so. Dapper returns datetime2 columns as
+    // DateTimeKind.Unspecified, which System.Text.Json writes with no suffix — and a suffix-less
+    // date-time is parsed as *local* time by browsers, so IST clients read every instant 5½ hours
+    // early and treated near-future deadlines as expired. See UtcDateTimeConverter.
+    builder.Services
+        .AddControllers()
+        .AddJsonOptions(options =>
+        {
+            options.JsonSerializerOptions.Converters.Add(new UtcDateTimeConverter());
+            options.JsonSerializerOptions.Converters.Add(new NullableUtcDateTimeConverter());
+        });
+
+    // SignalR has its own serialiser: notification/tracking payloads pushed over the hubs would
+    // otherwise keep the ambiguous format the REST endpoints just stopped emitting.
+    builder.Services
+        .AddSignalR()
+        .AddJsonProtocol(options =>
+        {
+            options.PayloadSerializerOptions.Converters.Add(new UtcDateTimeConverter());
+            options.PayloadSerializerOptions.Converters.Add(new NullableUtcDateTimeConverter());
+        });
 
     builder.Services.AddValidatorsFromAssembly(typeof(AuthService).Assembly);
 
