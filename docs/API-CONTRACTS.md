@@ -27,7 +27,13 @@ See `docs/ARCHITECTURE.md` § Data dictionary → Enum value tables (Role, Accou
 All 5 endpoints route under `/api/auth`. None require a role policy; `logout` and `me` require any authenticated JWT (`[Authorize]`).
 
 ### POST /api/auth/send-otp
-Sends a 6-digit OTP via the configured `ISmsProvider` (dev: `MockSmsProvider` logs it at Information level — check the console/`logs/foodbridge-*.log`). Rate-limited to 3 sends per mobile per 15 minutes.
+Sends a 6-digit OTP via the configured `ISmsProvider` (dev: `MockSmsProvider` logs it at Information level — check the console/`logs/foodbridge-*.log`).
+
+**Rate limit** — `OtpRateLimit:MaxSendsPerWindow` sends per mobile per `OtpRateLimit:WindowMinutes` (defaults 3 / 15). Keyed on the **mobile number only**, not IP or device, so changing browser or network doesn't reset it. Every OTP issued in the window counts, *including ones used successfully* — a clean login consumes one.
+
+The window **slides**: capacity returns one send at a time as individual sends age out, not all at once. Sends at 10:00/10:01/10:02 are blocked until 10:15, which frees exactly one. Waiting the full window from your *last* attempt always works, and that is what the 429 message quotes.
+
+Set `OtpRateLimit__MaxSendsPerWindow` to `0` to disable the limit entirely (demo only — the app logs a Warning on every startup while it's off).
 
 > **Dev shortcut**: `appsettings.Development.json`'s `Otp:FixedDevelopmentCode` (default `123456`) makes every OTP that fixed value — skip the log, just call `verify-otp` with `123456`. See `docs/ARCHITECTURE.md` § Seed data for the seeded mobile numbers per role. Never active outside Development (see the decisions log).
 
@@ -41,10 +47,12 @@ Success (200):
 ```
 Errors:
 - 400 — invalid mobile format (`errors: ["Mobile: Mobile must be a valid 10-digit Indian mobile number."]`)
-- 429 — rate limit exceeded (`message: "Too many OTP requests. Please try again later."`)
+- 429 — rate limit exceeded (`message: "Too many OTP requests. Please try again in 15 minutes."`, quoting the configured window)
 
 ### POST /api/auth/verify-otp
-Verifies the OTP (max 5 attempts per code before it must be re-requested).
+Verifies the OTP. An OTP is valid for **5 minutes**, is single-use (consumed on success), and tolerates `OtpRateLimit:MaxVerifyAttempts` wrong codes (default 5) before it locks.
+
+> Exceeding the attempt limit returns **422**, not 429, with `"Maximum verification attempts exceeded. Please request a new OTP."` — note that following that advice can itself hit the send-side 429 above if the window is exhausted. Set `OtpRateLimit__MaxVerifyAttempts` to `0` to disable the attempt limit (demo only).
 
 Request:
 ```json

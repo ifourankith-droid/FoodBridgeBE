@@ -112,6 +112,12 @@ Azure runbook: **`docs/AZURE_DEPLOYMENT.md`**. Production uses Azure SQL with En
 - `Database:MigrateOnStartup` is `false` in Production; run `dotnet run --project src/FoodBridge.Migrations -- "<conn>"` once.
 
 ## Active configuration
+- **`OtpRateLimit:MaxSendsPerWindow`** / **`WindowMinutes`** / **`MaxVerifyAttempts`** (defaults
+  `3` / `15` / `5`) — OTP abuse limits, keyed on the mobile number. **Setting any of them to `0`
+  disables that check**; `Program.cs` logs a Warning on every startup while one is off outside
+  Development. Its own section, deliberately **not** part of `Otp:` — that section is only bound when
+  the fixed-code gate is open, and abuse limits must never depend on a demo code being active.
+  Currently `0`/`0` on Azure for the demo.
 - **`DropOff:CooldownHours`** (default `5`) — after a drop-off, that spot is hidden from the
   nearest-spot suggestion for this long, and flagged `isCoolingDown` on the volunteer hotspot map.
   **Global, not per-volunteer**: the place itself has just been served. Also
